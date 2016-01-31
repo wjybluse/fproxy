@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"bufio"
 	"encoding/base64"
 	"encoding/binary"
 	"github.com/elians/fproxy/config"
@@ -42,7 +43,7 @@ func (h *HProxy) Handle() {
 func (h *HProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	defer func() {
 		if err := recover(); err != nil {
-			logger.Errorf("http----->handle error when clean...%s", err)
+			logger.Errorf("http----->handle error when clean...%s\n", err)
 			rw.WriteHeader(http.StatusInternalServerError)
 		}
 	}()
@@ -70,14 +71,7 @@ func (h *HProxy) handleHttps(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	hst := req.URL.Host
-	arr := strings.Split(hst, ":")
-	var port int
-	if len(arr) < 2 {
-		port = 443
-	} else {
-		port, err = strconv.Atoi(arr[1])
-	}
-	domain := arr[0]
+	domain, port := h.getHostAndPort("https", hst)
 	if ip := net.ParseIP(domain); ip != nil {
 		if config.ParserIP(domain) {
 			handleChina(cli, hst)
@@ -94,22 +88,132 @@ func (h *HProxy) handleHttps(rw http.ResponseWriter, req *http.Request) {
 
 }
 
+func (h *HProxy) getHostAndPort(scheme string, hst string) (host string, port int) {
+	arr := strings.Split(hst, ":")
+	if len(arr) < 2 {
+		if scheme == "https" {
+			port = 443
+		} else {
+			port = 80
+		}
+
+	} else {
+		port, _ = strconv.Atoi(arr[1])
+	}
+	host = arr[0]
+	return
+}
+
 func (h *HProxy) handleHttp(rw http.ResponseWriter, req *http.Request) {
 	clearProxyHeader(req)
+	hst := req.URL.Host
+	domain, port := h.getHostAndPort("http", hst)
+	if ip := net.ParseIP(domain); ip != nil {
+		if config.ParserIP(domain) {
+			h.handleSimpleHttp(rw, req)
+			return
+		}
+		h.handleHttpTunnel(rw, req, domain, port, false)
+		return
+	}
+	if config.ParserDomain(domain) && !config.IsInWhiteList(domain) {
+		h.handleSimpleHttp(rw, req)
+		return
+	}
+	h.handleHttpTunnel(rw, req, domain, port, true)
+}
+
+func (h *HProxy) handleHttpTunnel(rw http.ResponseWriter, req *http.Request, domain string, port int, isdomain bool) {
+	logger.Error("http-->via http tunnel")
+	ci, flag, err := client.NewSP(h.cfg).ChooseServer()
+	if err != nil {
+		logger.Errorf("Http--->create server client error %s", err)
+		return
+	}
+	if flag {
+		cli := ci.(*client.SSLClient)
+		defer func() {
+			cli.Conn.Close()
+		}()
+		err := h.handleSocks5(domain, port, isdomain, &cli.Conn)
+		if err != nil {
+			logger.Errorf("Http--->handle error message %s\n", err)
+			return
+		}
+		if err = req.Write(&cli.Conn); err != nil {
+			logger.Errorf("Http->write data error %s\n", err)
+			return
+		}
+		rsp, err := http.ReadResponse(bufio.NewReader(&cli.Conn), nil)
+		if err != nil {
+			logger.Errorf("Http->read response error %s\n", err)
+			return
+		}
+		defer rsp.Body.Close()
+		//clearHeaders(rw.Header())
+		//copyHeaders(rw.Header(), rsp.Header)
+		clearAndCopy(rw.Header(), rsp.Header)
+		if _, err = io.Copy(rw, rsp.Body); err != nil {
+			logger.Errorf("http->copy response error %s\n", err)
+			return
+		}
+		return
+	}
+	cli := ci.(*client.Client)
+	defer func() {
+		cli.Conn.Close()
+	}()
+	err = h.handleSocks5(domain, port, isdomain, cli.Conn)
+	if err != nil {
+		logger.Errorf("Http--->handle error message %s\n", err)
+		return
+	}
+	if err = req.Write(cli.Conn); err != nil {
+		logger.Errorf("Http->write data error %s\n", err)
+		return
+	}
+	rsp, err := http.ReadResponse(bufio.NewReader(cli.Conn), nil)
+	if err != nil {
+		logger.Errorf("Http->read response error %s\n", err)
+		return
+	}
+	defer rsp.Body.Close()
+	//clearHeaders(rw.Header())
+	//copyHeaders(rw.Header(), rsp.Header)
+	clearAndCopy(rw.Header(), rsp.Header)
+	rw.WriteHeader(rsp.StatusCode)
+	if _, err = io.Copy(rw, rsp.Body); err != nil {
+		logger.Errorf("http->copy response error %s\n", err)
+		return
+	}
+}
+
+func clearAndCopy(dest, src http.Header) {
+	clearHeaders(dest)
+	copyHeaders(dest, src)
+}
+
+func (h *HProxy) handleSimpleHttp(rw http.ResponseWriter, req *http.Request) {
 	resp, err := h.tr.RoundTrip(req)
 	if err != nil {
 		http.Error(rw, err.Error(), 500)
 		return
 	}
 	defer resp.Body.Close()
-	clearHeaders(rw.Header())
-	copyHeaders(rw.Header(), resp.Header)
+	//clearHeaders(rw.Header())
+	//copyHeaders(rw.Header(), resp.Header)
+	clearAndCopy(rw.Header(), resp.Header)
 	rw.WriteHeader(resp.StatusCode)
 	_, err = io.Copy(rw, resp.Body)
 	if err != nil && err != io.EOF {
 		logger.Errorf("http----->find error message %s\n", err)
 		return
 	}
+}
+
+func pipe(dest, src interface{}) {
+	go io.Copy(dest.(io.Writer), src.(io.Reader))
+	io.Copy(src.(io.Writer), dest.(io.Reader))
 }
 
 func clearProxyHeader(req *http.Request) {
@@ -152,29 +256,26 @@ func (h *HProxy) handleTunnel(con net.Conn, host string, port int, isdomain bool
 			cli.Conn.Close()
 			con.Close()
 		}()
-		err := h.handleSocks5(host, port, isdomain, nil, cli)
+		err := h.handleSocks5(host, port, isdomain, &cli.Conn)
 		if err != nil {
 			logger.Errorf("Http--->handle error message %s\n", err)
 			return
 		}
-		go io.Copy(&cli.Conn, con)
-		io.Copy(con, &cli.Conn)
-		return
+		pipe(&cli.Conn, con)
 	}
 	cli := ci.(*client.Client)
 	defer func() {
 		cli.Conn.Close()
 	}()
-	err = h.handleSocks5(host, port, isdomain, cli, nil)
+	err = h.handleSocks5(host, port, isdomain, cli.Conn)
 	if err != nil {
 		logger.Errorf("Http--->handle error message %s\n", err)
 		return
 	}
-	go io.Copy(cli.Conn, con)
-	io.Copy(con, cli.Conn)
+	pipe(cli.Conn, con)
 }
 
-func (h *HProxy) handleSocks5(host string, port int, isdomain bool, client *client.Client, sslClient *client.SSLClient) error {
+func (h *HProxy) handleSocks5(host string, port int, isdomain bool, write io.Writer) error {
 	data := make([]byte, 260)
 	pos := 0
 	if isdomain {
@@ -191,16 +292,9 @@ func (h *HProxy) handleSocks5(host string, port int, isdomain bool, client *clie
 	binary.BigEndian.PutUint16(data[pos:], uint16(port))
 	pos += 2
 	d := data[:pos]
-	if client != nil {
-		if _, err := client.Conn.Write(d); err != nil {
-			logger.Errorf("Http--->write data error %s\n", err)
-			return err
-		}
-	} else {
-		if _, err := sslClient.Conn.Write(d); err != nil {
-			logger.Errorf("Http---->write data error %s\n", err)
-			return err
-		}
+	if _, err := write.Write(d); err != nil {
+		logger.Errorf("Http--->write data error %s\n", err)
+		return err
 	}
 	return nil
 }
@@ -216,8 +310,7 @@ func handleChina(con net.Conn, host string) {
 		cli.Close()
 		con.Close()
 	}()
-	go io.Copy(cli.Conn, con)
-	io.Copy(con, cli.Conn)
+	pipe(cli.Conn, con)
 }
 
 func (h *HProxy) auth(rw http.ResponseWriter, req *http.Request) bool {

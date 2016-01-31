@@ -182,8 +182,7 @@ func (s *Socks5Tunnel) handleConnection(conn net.Conn) {
 			logger.Errorf("Socks5--->handle error message when write data %s \n", err)
 			return
 		}
-		go io.Copy(&cli.Conn, conn)
-		io.Copy(conn, &cli.Conn)
+		pipe(&cli.Conn, conn)
 		return
 	}
 	cli := ci.(*client.Client)
@@ -196,8 +195,7 @@ func (s *Socks5Tunnel) handleConnection(conn net.Conn) {
 		logger.Errorf("Socks5--->handle error message when write data %s \n", err)
 		return
 	}
-	go io.Copy(cli.Conn, conn)
-	io.Copy(conn, cli.Conn)
+	pipe(cli.Conn, conn)
 }
 
 func (s *Socks5Tunnel) Handle() {
