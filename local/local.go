@@ -1,13 +1,15 @@
 package local
 
 import (
-	"fmt"
 	cf "github.com/elians/fproxy/config"
-	"github.com/elians/fproxy/protcol"
+	"github.com/elians/fproxy/protocol"
+	"github.com/op/go-logging"
 	"net"
 	"strconv"
 	"time"
 )
+
+var logger = logging.MustGetLogger("local")
 
 type LocalServer struct {
 	listener net.Listener
@@ -22,7 +24,7 @@ func newLoalServer(cfg *cf.FileConfig) *LocalServer {
 	h := cfg.Local + ":" + strconv.Itoa(cfg.LocalPort)
 	listener, err := net.Listen("tcp", h)
 	if err != nil {
-		fmt.Printf("cannot listen the port %s\n", err)
+		logger.Errorf("cannot listen the port %s\n", err)
 		return nil
 	}
 	return &LocalServer{listener, 100}
@@ -31,13 +33,12 @@ func newLoalServer(cfg *cf.FileConfig) *LocalServer {
 func CreateLocalServer(cfg *cf.FileConfig) {
 	server := newLoalServer(cfg)
 	if server == nil {
-		fmt.Println("cannot create server")
+		logger.Errorf("cannot create server")
 		return
 	}
 	if cfg.Protcol == "http" {
-		fmt.Printf("handle http listener")
-		protcol.NewHPProxy(server.listener, cfg).Handle()
+		protocol.NewHPProxy(server.listener, cfg).Handle()
 		return
 	}
-	protcol.NewSocks5Tunnel(cfg, server.listener)
+	protocol.NewSocks5Tunnel(cfg, server.listener).Handle()
 }

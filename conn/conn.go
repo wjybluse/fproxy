@@ -3,12 +3,14 @@ package conn
 import (
 	"crypto/tls"
 	"errors"
-	"fmt"
 	p "github.com/elians/fproxy/config"
+	"github.com/op/go-logging"
 	"net"
 	"strconv"
 	"time"
 )
+
+var logger = logging.MustGetLogger("conn")
 
 type RemoteServer struct {
 	config *p.FileConfig
@@ -35,18 +37,20 @@ func (s *SSLClient) Stop() {
 }
 
 func NewClient(host string) *Client {
+	logger.Errorf("handle host is %s\n", host)
 	conn, err := net.Dial("tcp", host)
 	if err != nil {
-		fmt.Printf("Error:--->cannnot create client %s\n", err)
+		logger.Errorf("Error:--->cannnot create client %s\n", err)
 		return nil
 	}
 	return &Client{conn}
 }
 
 func NewSSLClient(host string) *SSLClient {
+	logger.Errorf("handle host is %s\n", host)
 	conn, err := tls.Dial("tcp", host, p.NewSSLConfig())
 	if err != nil {
-		fmt.Printf("Error:--->cannnot create client %s\n", err)
+		logger.Errorf("Error:--->cannnot create client %s\n", err)
 		return nil
 	}
 	return &SSLClient{*conn}
@@ -60,7 +64,7 @@ func (p *RemoteServer) ChooseServer() (interface{}, bool, error) {
 		if server.SSL {
 			cli := NewSSLClient(net.JoinHostPort(server.Host, strconv.Itoa(server.Port)))
 			if cli == nil {
-				fmt.Printf("cannot connect to server %v via ssl \n", server)
+				logger.Errorf("cannot connect to server %v via ssl \n", server)
 				continue
 			}
 			cli.Conn.SetReadDeadline(time.Now().Add(time.Duration(server.Timeout) * time.Second))
@@ -68,7 +72,7 @@ func (p *RemoteServer) ChooseServer() (interface{}, bool, error) {
 		}
 		cli := NewClient(net.JoinHostPort(server.Host, strconv.Itoa(server.Port)))
 		if cli == nil {
-			fmt.Printf("cannot connect to server %v \n", server)
+			logger.Errorf("cannot connect to server %v \n", server)
 			continue
 		}
 		cli.Conn.SetReadDeadline(time.Now().Add(time.Duration(server.Timeout) * time.Second))

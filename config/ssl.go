@@ -3,18 +3,17 @@ package config
 import (
 	"crypto/tls"
 	"flag"
-	"fmt"
 )
 
 var (
-	keyFile  = flag.String("keyfile", "./fuck.key", "for ssl use")
-	certFile = flag.String("certfile", "./fuck.pem", "for ssl use")
+	keyFile  = flag.String("keyfile", "./certs/fproxy.key", "for ssl use")
+	certFile = flag.String("certfile", "./certs/fproxy.pem", "for ssl use")
 )
 
 func NewSSLConfig() *tls.Config {
 	cert, err := tls.LoadX509KeyPair(*certFile, *keyFile)
 	if err != nil {
-		fmt.Printf("ERROR:---->cannot load file %s\n", err)
+		logger.Errorf("ERROR:---->cannot load file %s\n", err)
 		return nil
 	}
 	return &tls.Config{

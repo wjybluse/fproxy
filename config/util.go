@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"fmt"
 	"gopkg.in/kothar/brotli-go.v0/dec"
 	"gopkg.in/kothar/brotli-go.v0/enc"
 	"io"
@@ -11,7 +10,7 @@ import (
 func decompressBuffer(compressed []byte) ([]byte, error) {
 	decompressed, err := dec.DecompressBuffer(compressed, make([]byte, 0))
 	if err != nil {
-		fmt.Println("decompressed failed...")
+		logger.Errorf("decompressed failed...")
 		return nil, err
 	}
 	return decompressed, nil
@@ -23,7 +22,7 @@ func compressedBuffer(buffer []byte) ([]byte, error) {
 	params.SetQuality(11)
 	compressed, err := enc.CompressBuffer(params, buffer, make([]byte, 0))
 	if err != nil {
-		fmt.Printf("compressed failed...%s", err)
+		logger.Errorf("compressed failed...%s", err)
 		return nil, err
 	}
 	return compressed, nil
@@ -43,7 +42,7 @@ func CopyWithCompressed(dst io.Writer, src io.Reader) (written int64, err error)
 		if n > 0 {
 			cbuffer, err := compressedBuffer(buffer)
 			if err != nil {
-				fmt.Printf("error when compress data %s", err)
+				logger.Errorf("error when compress data %s", err)
 				break
 			}
 			nw, err := dst.Write(cbuffer)
@@ -51,13 +50,13 @@ func CopyWithCompressed(dst io.Writer, src io.Reader) (written int64, err error)
 				written += int64(nw)
 			}
 			if nw != len(cbuffer) {
-				fmt.Printf("write buffer error %d", nw)
+				logger.Errorf("write buffer error %d", nw)
 				err = errors.New("error len when write data")
 				break
 			}
 		}
 		if err != nil {
-			fmt.Printf("read data error %s", err)
+			logger.Errorf("read data error %s", err)
 			break
 		}
 		if err == io.EOF {
@@ -81,7 +80,7 @@ func CopyWithDecompressed(dst io.Writer, src io.Reader) (written int64, err erro
 		if n > 0 {
 			cbuffer, err := decompressBuffer(buffer)
 			if err != nil {
-				fmt.Printf("error when compress data %s", err)
+				logger.Errorf("error when compress data %s", err)
 				break
 			}
 			nw, err := dst.Write(cbuffer)
@@ -89,7 +88,7 @@ func CopyWithDecompressed(dst io.Writer, src io.Reader) (written int64, err erro
 				written += int64(nw)
 			}
 			if nw != len(cbuffer) {
-				fmt.Printf("write buffer error %d", nw)
+				logger.Errorf("write buffer error %d", nw)
 				err = errors.New("error len when write data")
 				break
 			}
@@ -98,7 +97,7 @@ func CopyWithDecompressed(dst io.Writer, src io.Reader) (written int64, err erro
 			break
 		}
 		if err != nil {
-			fmt.Printf("read data error %s", err)
+			logger.Errorf("read data error %s", err)
 			break
 		}
 	}
