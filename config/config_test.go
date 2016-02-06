@@ -6,7 +6,7 @@ import (
 )
 
 func TestParserOK(t *testing.T) {
-	cf := NewConfigFile("./conf.json")
+	cf := NewConfigFile("../tpl/conf.json")
 	if cf.Local != "127.0.0.1" {
 		t.Fatalf("error...%s", cf.Local)
 		t.Fail()

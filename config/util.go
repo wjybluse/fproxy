@@ -5,6 +5,7 @@ import (
 	"gopkg.in/kothar/brotli-go.v0/dec"
 	"gopkg.in/kothar/brotli-go.v0/enc"
 	"io"
+	"time"
 )
 
 func decompressBuffer(compressed []byte) ([]byte, error) {
@@ -102,4 +103,8 @@ func CopyWithDecompressed(dst io.Writer, src io.Reader) (written int64, err erro
 		}
 	}
 	return written, err
+}
+
+func SetTimeout(fn func(t time.Time) error, expireTime int) {
+	fn(time.Now().Add(time.Duration(expireTime) * time.Second))
 }

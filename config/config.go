@@ -14,14 +14,16 @@ type FileConfig struct {
 	Auth      bool        `json:"auth"`
 	Username  string      `json:"proxy_username"`
 	Password  string      `json:"proxy_password"`
+	Timeout   int         `json:"timeout"`
 }
 
 type RemoteVPS struct {
-	Name     string `json:"name"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
+	Host string `json:"host"`
+	Port int    `json:"port"`
+	//for future
 	Password string `json:"password"`
 	Timeout  int    `json:"timeout"`
+	//for future
 	Encrypt  string `json:"encrypt"`
 	Protcol  string `json:"protocol"`
 	SSL      bool   `json:"is_ssl"`
@@ -51,17 +53,17 @@ func NewServerConfig(filename string) *RemoteVPS {
 	f, err := os.Open(filename)
 	if err != nil {
 		logger.Errorf("Server:---->error when read config file %s", err)
-		os.Exit(1)
+		panic("Server-->cannot find config file,pls check it " + err.Error())
 	}
 	buf, err := ioutil.ReadAll(f)
 	if err != nil {
 		logger.Errorf("read data error %s", err)
-		os.Exit(1)
+		panic("Server--->parser file error " + err.Error())
 	}
 	var vpsConfig RemoteVPS
 	if err := json.Unmarshal(buf, &vpsConfig); err != nil {
 		logger.Errorf("parser file error ...%s", err)
-		os.Exit(1)
+		panic("Server--->error " + err.Error())
 	}
 	return &vpsConfig
 }

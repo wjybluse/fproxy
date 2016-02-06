@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"strconv"
-	"time"
 )
 
 var (
@@ -60,9 +59,9 @@ func (s *ServerSock5) handleConnection(conn net.Conn) {
 		return
 	}
 	logger.Error("Server:---->copy data begin...")
-	cli.Conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 
+	c.SetTimeout(cli.Conn.SetReadDeadline, s.cfg.Timeout)
+	c.SetTimeout(conn.SetReadDeadline, s.cfg.Timeout)
 	//for comment
 	go io.Copy(cli.Conn, conn)
 	io.Copy(conn, cli.Conn)

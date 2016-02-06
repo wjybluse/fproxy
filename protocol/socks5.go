@@ -140,6 +140,10 @@ func (s *Socks5Tunnel) handleConnection(conn net.Conn) {
 		return
 	}
 
+	//set default timeout
+	cfg.SetTimeout(conn.SetReadDeadline, s.config.Timeout)
+	//conn.SetReadDeadline(time.Now().Add(time.Duration(s.config.Timeout) * time.Second))
+
 	rawAddr, host, domain, err := s.request(conn)
 	if err != nil {
 		logger.Errorf("Socks5--->get host failed %s\n", err)
@@ -173,6 +177,8 @@ func (s *Socks5Tunnel) handleConnection(conn net.Conn) {
 	}
 	if flag {
 		cli := ci.(*client.SSLClient)
+		cfg.SetTimeout(cli.Conn.SetReadDeadline, s.config.Timeout)
+		//cli.Conn.SetReadDeadline(time.Now().Add(time.Duration(s.config.Timeout) * time.Second))
 		defer func() {
 			cli.Conn.Close()
 			conn.Close()
@@ -186,6 +192,8 @@ func (s *Socks5Tunnel) handleConnection(conn net.Conn) {
 		return
 	}
 	cli := ci.(*client.Client)
+	cfg.SetTimeout(cli.Conn.SetReadDeadline, s.config.Timeout)
+	//cli.Conn.SetReadDeadline(time.Now().Add(time.Duration(s.config.Timeout) * time.Second))
 	defer func() {
 		cli.Conn.Close()
 		conn.Close()
