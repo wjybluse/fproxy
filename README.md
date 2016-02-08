@@ -25,7 +25,7 @@
 > wget https://github.com/wjybluse/fproxy/tree/master/binary/fproxy_<linux/mac>.tar.gz
 >```
 
-### Config
+### 2.Configuration
 >Change local config file and server config file
 >Example
 >```javascript
@@ -99,5 +99,5 @@ google-analytics
 >
 > #for linux
 >  ps -ef|grep local/server
-> kill -9 <pid>
+> kill -9 <pid>	
 >```
