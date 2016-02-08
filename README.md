@@ -101,3 +101,14 @@ google-analytics
 >  ps -ef|grep local/server
 > kill -9 <pid>	
 >```
+
+### 4.Etc
+>1.Youtube example
+![Youtube](/pics/youtube.png)
+>2.Twitter and Facebook
+>![Twitter](/pics/twitter.png)
+>
+>![Facebook](/pics/facebook.png)
+>
+>3.Baidu
+>![badu.com](/pics/baidu.png)
