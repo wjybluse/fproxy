@@ -102,8 +102,8 @@ google-analytics
 > kill -9 <pid>	
 >```
 
-### 4.Etc
->1.Youtube example
+### 4.Example
+>1.Youtube
 ![Youtube](/pics/youtube.png)
 >2.Twitter and Facebook
 >![Twitter](/pics/twitter.png)
