@@ -93,12 +93,12 @@ google-analytics
 >```
 >2.Stop service
 >```shell
->  #for mac 
->  lsof -i :<your_local_port or server_port>
+> #for mac 
+> lsof -i :<your_local_port or server_port>
 > kill -9 <pid>
 >
 > #for linux
->  ps -ef|grep local/server
+> ps -ef|grep local/server
 > kill -9 <pid>	
 >```
 
