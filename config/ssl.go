@@ -18,5 +18,6 @@ func NewSSLConfig() *tls.Config {
 	}
 	return &tls.Config{
 		Certificates:       []tls.Certificate{cert},
-		InsecureSkipVerify: true}
+		InsecureSkipVerify: true,
+	}
 }

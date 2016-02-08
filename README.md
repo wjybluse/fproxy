@@ -1,8 +1,12 @@
 # F\*\*k Proxy
->Simple implement of proxy f\*\*k  gfw
+>Simple Tunnel
 
->1.Support http tunnel and socks5 tunnel
-#Getting Start
->Find binary package in bin dir
->Config your server info and start 
->You can change the code 
+### 1.Install
+>1.Download binary file,linux or mac,windows?
+
+>2.Extract
+
+>3.Config
+>```shell
+>  #change your vps server ip <address></address>
+>```
