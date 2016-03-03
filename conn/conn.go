@@ -37,7 +37,6 @@ func (s *SSLClient) Stop() {
 }
 
 func NewClient(host string) *Client {
-	logger.Errorf("handle host is %s\n", host)
 	conn, err := net.Dial("tcp", host)
 	if err != nil {
 		logger.Errorf("Error:--->cannnot create client %s\n", err)
@@ -47,7 +46,6 @@ func NewClient(host string) *Client {
 }
 
 func NewSSLClient(host string) *SSLClient {
-	logger.Errorf("handle host is %s\n", host)
 	conn, err := tls.Dial("tcp", host, p.NewSSLConfig())
 	if err != nil {
 		logger.Errorf("Error:--->cannnot create client %s\n", err)

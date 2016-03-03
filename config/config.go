@@ -24,7 +24,6 @@ type RemoteVPS struct {
 	Password string `json:"password"`
 	Timeout  int    `json:"timeout"`
 	//for future
-	Encrypt  string `json:"encrypt"`
 	Protcol  string `json:"protocol"`
 	SSL      bool   `json:"is_ssl"`
 	Compress bool   `json:"is_compress"`

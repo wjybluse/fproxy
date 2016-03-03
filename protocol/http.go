@@ -124,7 +124,6 @@ func (h *HProxy) handleHttp(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (h *HProxy) handleHttpTunnel(rw http.ResponseWriter, req *http.Request, domain string, port int, isdomain bool) {
-	logger.Error("http-->via http tunnel")
 	ci, flag, err := client.NewSP(h.cfg).ChooseServer()
 	if err != nil {
 		logger.Errorf("Http--->create server client error %s", err)

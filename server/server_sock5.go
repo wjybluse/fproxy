@@ -42,23 +42,27 @@ type ServerSock5 struct {
 }
 
 func (s *ServerSock5) handleConnection(conn net.Conn) {
-	logger.Error("Server:---->recevie data from local proxy")
 	data, host, err := s.request(conn)
 	if err != nil {
 		logger.Errorf("Server:---->cannot find host %s\n", err)
 		return
 	}
-	logger.Errorf("Server:---->find remote server %s\n", host)
 	cli := client.NewClient(host)
+	if cli == nil {
+		logger.Error("handle connection error,cannot create client.")
+		return
+	}
 	defer func() {
-		cli.Close()
+		//fixe bug when cli is nil
+		if cli != nil {
+			cli.Close()
+		}
 		conn.Close()
 	}()
 	if _, err := cli.Conn.Write(data); err != nil {
 		logger.Error("Server:----->write data error")
 		return
 	}
-	logger.Error("Server:---->copy data begin...")
 
 	c.SetTimeout(cli.Conn.SetReadDeadline, s.cfg.Timeout)
 	c.SetTimeout(conn.SetReadDeadline, s.cfg.Timeout)
