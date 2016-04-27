@@ -156,7 +156,6 @@ func (receiver *receiver) handleConnection(conn net.Conn) {
 		logger.Errorf("Socks5--->get host failed %s\n", err)
 		return
 	}
-	logger.Errorf("find byte %v bytestr %s\n", rawAddr, string(rawAddr))
 	_, err = conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x08, 0x43})
 	if err != nil {
 		logger.Errorf("Socks5--->error send data to client %s\n", err)
