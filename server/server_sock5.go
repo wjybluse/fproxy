@@ -3,11 +3,13 @@ package server
 import (
 	"encoding/binary"
 	"errors"
-	c "github.com/elians/fproxy/config"
-	client "github.com/elians/fproxy/conn"
 	"io"
 	"net"
 	"strconv"
+
+	c "github.com/elians/fproxy/config"
+	client "github.com/elians/fproxy/conn"
+	"github.com/elians/fproxy/protocol"
 )
 
 var (
@@ -19,30 +21,29 @@ var (
 )
 
 const (
-	//for handshake
-	VERSION = 0
-	NMETHOD = 1
+	version = 0
+	nmethod = 1
 
-	SOCKS_V5          = 5
-	SOCKS_CMD_CONNECT = 1
+	socksV5         = 5
+	socksCmdConnect = 1
 
-	DOMAIN_LEN = 1
-	IPV4       = 1
-	IPV6       = 4
-	DOMAIN     = 3
+	domainLen = 1
+	ipv4      = 1
+	ipv6      = 4
+	domain    = 3
 
-	IPV4_LEN    = 1 + net.IPv4len + 2 //3(ver+cmd+rsv) + 1addrType + ipv4 + 2port
-	IPV6_LEN    = 1 + net.IPv6len + 2 // 3(ver+cmd+rsv) + 1addrType + ipv6 + 2port
-	DOMAIN_TLEN = 1 + 1 + 2           // 1addrType + 1addrLen + 2port, plus addrLen
+	ipv4Len    = 1 + net.IPv4len + 2 //3(ver+cmd+rsv) + 1addrType + ipv4 + 2port
+	ipv6Len    = 1 + net.IPv6len + 2 // 3(ver+cmd+rsv) + 1addrType + ipv6 + 2port
+	domainTLen = 1 + 1 + 2           // 1addrType + 1addrLen + 2port, plus addrLen
 )
 
-type ServerSock5 struct {
+type socksReceiver struct {
 	listener net.Listener
-	cfg      *c.RemoteVPS
+	cfg      *c.RemoteConfig
 }
 
-func (s *ServerSock5) handleConnection(conn net.Conn) {
-	data, host, err := s.request(conn)
+func (receiver *socksReceiver) handleConnection(conn net.Conn) {
+	data, host, err := receiver.request(conn)
 	if err != nil {
 		logger.Errorf("Server:---->cannot find host %s\n", err)
 		return
@@ -64,32 +65,32 @@ func (s *ServerSock5) handleConnection(conn net.Conn) {
 		return
 	}
 
-	c.SetTimeout(cli.Conn.SetReadDeadline, s.cfg.Timeout)
-	c.SetTimeout(conn.SetReadDeadline, s.cfg.Timeout)
+	c.SetTimeout(cli.Conn.SetReadDeadline, receiver.cfg.Timeout)
+	c.SetTimeout(conn.SetReadDeadline, receiver.cfg.Timeout)
 	//for comment
 	go io.Copy(cli.Conn, conn)
 	io.Copy(conn, cli.Conn)
 
 }
 
-func (s *ServerSock5) request(conn net.Conn) ([]byte, string, error) {
+func (receiver *socksReceiver) request(conn net.Conn) ([]byte, string, error) {
 	buf := make([]byte, 260)
 	//conn.SetReadDeadline(time.Now().Add(l.timeout))
 	var n int
 	var err error
-	if n, err = io.ReadAtLeast(conn, buf, DOMAIN_LEN+1); err != nil {
+	if n, err = io.ReadAtLeast(conn, buf, domainLen+1); err != nil {
 		logger.Errorf("Server:---->read data from client error %s\n", err)
 		return nil, "", err
 	}
 	var hstLen int
 	//host item like ipv4,ipv6,domain and so on
 	switch buf[0] {
-	case IPV4:
-		hstLen = IPV4_LEN
-	case IPV6:
-		hstLen = IPV6_LEN
-	case DOMAIN:
-		hstLen = int(buf[DOMAIN_LEN]) + DOMAIN_TLEN
+	case ipv4:
+		hstLen = ipv4Len
+	case ipv6:
+		hstLen = ipv6Len
+	case domain:
+		hstLen = int(buf[domainLen]) + domainTLen
 	default:
 		return nil, "", errAddr
 	}
@@ -108,30 +109,31 @@ func (s *ServerSock5) request(conn net.Conn) ([]byte, string, error) {
 	ipIndex := 1
 	var hst string
 	switch buf[0] {
-	case IPV4:
+	case ipv4:
 		hst = net.IP(buf[ipIndex : ipIndex+net.IPv4len]).String()
-	case IPV6:
+	case ipv6:
 		hst = net.IP(buf[ipIndex : ipIndex+net.IPv6len]).String()
-	case DOMAIN:
-		hst = string(buf[2 : 2+buf[DOMAIN_LEN]])
+	case domain:
+		hst = string(buf[2 : 2+buf[domainLen]])
 	}
 	port := binary.BigEndian.Uint16(buf[hstLen-2 : hstLen])
 	host := net.JoinHostPort(hst, strconv.Itoa(int(port)))
 	return rawAddr, host, nil
 }
 
-func (s *ServerSock5) Handle() {
+func (receiver *socksReceiver) Handle() {
 	for {
-		conn, err := s.listener.Accept()
+		conn, err := receiver.listener.Accept()
 		if err != nil {
 			logger.Errorf("Server--->socks5 error %s", err)
 			continue
 		}
-		go s.handleConnection(conn)
+		go receiver.handleConnection(conn)
 	}
 
 }
 
-func NewSocks5(listener net.Listener, cfg *c.RemoteVPS) *ServerSock5 {
-	return &ServerSock5{listener, cfg}
+//NewSocksTunnel ...
+func NewSocksTunnel(listener net.Listener, cfg *c.RemoteConfig) protocol.Tunnel {
+	return &socksReceiver{listener, cfg}
 }

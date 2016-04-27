@@ -10,6 +10,7 @@ var (
 	certFile = flag.String("certfile", "./certs/fproxy.pem", "for ssl use")
 )
 
+//NewSSLConfig ...
 func NewSSLConfig() *tls.Config {
 	cert, err := tls.LoadX509KeyPair(*certFile, *keyFile)
 	if err != nil {

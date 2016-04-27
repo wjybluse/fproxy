@@ -2,34 +2,36 @@ package server
 
 import (
 	"crypto/tls"
-	c "github.com/elians/fproxy/config"
-	"github.com/op/go-logging"
 	"net"
 	"strconv"
+
+	c "github.com/elians/fproxy/config"
+	"github.com/op/go-logging"
 )
 
 var logger = logging.MustGetLogger("server")
 
-type PServer struct {
+type pserver struct {
 	listener net.Listener
 }
 
-func newServer(vpsConfig *c.RemoteVPS) *PServer {
+func newServer(vpsConfig *c.RemoteConfig) *pserver {
 	host := vpsConfig.Host + ":" + strconv.Itoa(vpsConfig.Port)
 	ts, err := tls.Listen("tcp", host, c.NewSSLConfig())
 	if err != nil {
 		logger.Errorf("create server failed %s", err)
 		return nil
 	}
-	return &PServer{ts}
+	return &pserver{ts}
 }
 
-func CreateServer(cfg *c.RemoteVPS) {
+//Server ...
+func Server(cfg *c.RemoteConfig) {
 	server := newServer(cfg)
 	if server == nil {
 		logger.Errorf("Server--->cannot create server")
 		return
 	}
-	s := NewSocks5(server.listener, cfg)
+	s := NewSocksTunnel(server.listener, cfg)
 	s.Handle()
 }

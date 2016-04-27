@@ -6,18 +6,20 @@ import (
 	"os"
 )
 
-type FileConfig struct {
-	Local     string      `json:"local"`
-	LocalPort int         `json:"local_port"`
-	Servers   []RemoteVPS `json:"servers"`
-	Protcol   string      `json:"protocol"`
-	Auth      bool        `json:"auth"`
-	Username  string      `json:"proxy_username"`
-	Password  string      `json:"proxy_password"`
-	Timeout   int         `json:"timeout"`
+//LocalConfig ...
+type LocalConfig struct {
+	Local     string         `json:"local"`
+	LocalPort int            `json:"local_port"`
+	Servers   []RemoteConfig `json:"servers"`
+	Protcol   string         `json:"protocol"`
+	Auth      bool           `json:"auth"`
+	Username  string         `json:"proxy_username"`
+	Password  string         `json:"proxy_password"`
+	Timeout   int            `json:"timeout"`
 }
 
-type RemoteVPS struct {
+//RemoteConfig ...
+type RemoteConfig struct {
 	Host string `json:"host"`
 	Port int    `json:"port"`
 	//for future
@@ -29,7 +31,8 @@ type RemoteVPS struct {
 	Compress bool   `json:"is_compress"`
 }
 
-func NewConfigFile(file string) *FileConfig {
+//NewLocalConfig ...
+func NewLocalConfig(file string) *LocalConfig {
 	f, err := os.Open(file)
 	if err != nil {
 		logger.Errorf("open file error...%s\n", err)
@@ -40,7 +43,7 @@ func NewConfigFile(file string) *FileConfig {
 		logger.Errorf("cannot read data %s", err)
 		os.Exit(1)
 	}
-	var conf FileConfig
+	var conf LocalConfig
 	if err := json.Unmarshal(data, &conf); err != nil {
 		logger.Errorf("parser json error %s", err)
 		os.Exit(1)
@@ -48,7 +51,8 @@ func NewConfigFile(file string) *FileConfig {
 	return &conf
 }
 
-func NewServerConfig(filename string) *RemoteVPS {
+//NewRemoteConfig ...
+func NewRemoteConfig(filename string) *RemoteConfig {
 	f, err := os.Open(filename)
 	if err != nil {
 		logger.Errorf("Server:---->error when read config file %s", err)
@@ -59,7 +63,7 @@ func NewServerConfig(filename string) *RemoteVPS {
 		logger.Errorf("read data error %s", err)
 		panic("Server--->parser file error " + err.Error())
 	}
-	var vpsConfig RemoteVPS
+	var vpsConfig RemoteConfig
 	if err := json.Unmarshal(buf, &vpsConfig); err != nil {
 		logger.Errorf("parser file error ...%s", err)
 		panic("Server--->error " + err.Error())

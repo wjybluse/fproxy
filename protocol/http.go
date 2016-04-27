@@ -4,35 +4,37 @@ import (
 	"bufio"
 	"encoding/base64"
 	"encoding/binary"
-	"github.com/elians/fproxy/config"
-	client "github.com/elians/fproxy/conn"
-	"github.com/op/go-logging"
 	"io"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/elians/fproxy/config"
+	client "github.com/elians/fproxy/conn"
+	"github.com/op/go-logging"
 )
 
 var logger = logging.MustGetLogger("protocol")
 
 var (
-	HTTP_200 = []byte("HTTP/1.1 200 Connection Established\r\n\r\n")
-	HTTP_407 = []byte("HTTP/1.1 407 Proxy Authorization Required\r\nProxy-Authenticate: Basic realm=\"Secure Proxys\"\r\n\r\n")
+	httpOk         = []byte("HTTP/1.1 200 Connection Established\r\n\r\n")
+	httpAuthFailed = []byte("HTTP/1.1 407 Proxy Authorization Required\r\nProxy-Authenticate: Basic realm=\"Secure Proxys\"\r\n\r\n")
 )
 
-type HProxy struct {
+type httpReceiver struct {
 	listener net.Listener
-	cfg      *config.FileConfig
+	cfg      *config.LocalConfig
 	tr       *http.Transport
 }
 
-func NewHPProxy(listener net.Listener, cfg *config.FileConfig) *HProxy {
-	return &HProxy{listener: listener, cfg: cfg, tr: &http.Transport{Proxy: http.ProxyFromEnvironment, DisableKeepAlives: true}}
+//NewHTTPTunnel ...
+func NewHTTPTunnel(listener net.Listener, cfg *config.LocalConfig) Tunnel {
+	return &httpReceiver{listener: listener, cfg: cfg, tr: &http.Transport{Proxy: http.ProxyFromEnvironment, DisableKeepAlives: true}}
 }
 
-func (h *HProxy) Handle() {
-	err := http.Serve(h.listener, h)
+func (receiver *httpReceiver) Handle() {
+	err := http.Serve(receiver.listener, receiver)
 	if err != nil {
 		logger.Errorf("http----->handle error server error when ")
 		return
@@ -40,7 +42,7 @@ func (h *HProxy) Handle() {
 	logger.Errorf("http----->handle listener ..... start")
 }
 
-func (h *HProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+func (receiver *httpReceiver) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	defer func() {
 		if err := recover(); err != nil {
 			logger.Errorf("http----->handle error when clean...%s\n", err)
@@ -49,21 +51,21 @@ func (h *HProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}()
 
 	//if need auth,support simple basic auth
-	if h.cfg.Auth {
-		if !h.auth(rw, req) {
+	if receiver.cfg.Auth {
+		if !receiver.auth(rw, req) {
 			return
 		}
 	}
 
 	meth := strings.ToLower(req.Method)
 	if meth == "connect" {
-		h.handleHttps(rw, req)
+		receiver.handleHTTPS(rw, req)
 		return
 	}
-	h.handleHttp(rw, req)
+	receiver.handleHTTP(rw, req)
 }
 
-func (h *HProxy) handleHttps(rw http.ResponseWriter, req *http.Request) {
+func (receiver *httpReceiver) handleHTTPS(rw http.ResponseWriter, req *http.Request) {
 	hj := rw.(http.Hijacker)
 	cli, _, err := hj.Hijack()
 	if err != nil {
@@ -71,24 +73,23 @@ func (h *HProxy) handleHttps(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	hst := req.URL.Host
-	domain, port := h.getHostAndPort("https", hst)
+	domain, port := receiver.getHostAndPort("https", hst)
 	if ip := net.ParseIP(domain); ip != nil {
 		if config.ParserIP(domain) {
 			handleChina(cli, hst)
 			return
 		}
-		h.handleTunnel(cli, domain, port, false)
+		receiver.handleTunnel(cli, domain, port, false)
 		return
 	}
 	if config.ParserDomain(domain) && !config.IsInWhiteList(domain) {
 		handleChina(cli, hst)
 		return
 	}
-	h.handleTunnel(cli, domain, port, true)
-
+	receiver.handleTunnel(cli, domain, port, true)
 }
 
-func (h *HProxy) getHostAndPort(scheme string, hst string) (host string, port int) {
+func (receiver *httpReceiver) getHostAndPort(scheme string, hst string) (host string, port int) {
 	arr := strings.Split(hst, ":")
 	if len(arr) < 2 {
 		if scheme == "https" {
@@ -104,27 +105,27 @@ func (h *HProxy) getHostAndPort(scheme string, hst string) (host string, port in
 	return
 }
 
-func (h *HProxy) handleHttp(rw http.ResponseWriter, req *http.Request) {
+func (receiver *httpReceiver) handleHTTP(rw http.ResponseWriter, req *http.Request) {
 	clearProxyHeader(req)
 	hst := req.URL.Host
-	domain, port := h.getHostAndPort("http", hst)
+	domain, port := receiver.getHostAndPort("http", hst)
 	if ip := net.ParseIP(domain); ip != nil {
 		if config.ParserIP(domain) {
-			h.handleSimpleHttp(rw, req)
+			receiver.handleSimpleHTTP(rw, req)
 			return
 		}
-		h.handleHttpTunnel(rw, req, domain, port, false)
+		receiver.handleHTTPTunnel(rw, req, domain, port, false)
 		return
 	}
 	if config.ParserDomain(domain) && !config.IsInWhiteList(domain) {
-		h.handleSimpleHttp(rw, req)
+		receiver.handleSimpleHTTP(rw, req)
 		return
 	}
-	h.handleHttpTunnel(rw, req, domain, port, true)
+	receiver.handleHTTPTunnel(rw, req, domain, port, true)
 }
 
-func (h *HProxy) handleHttpTunnel(rw http.ResponseWriter, req *http.Request, domain string, port int, isdomain bool) {
-	ci, flag, err := client.NewSP(h.cfg).ChooseServer()
+func (receiver *httpReceiver) handleHTTPTunnel(rw http.ResponseWriter, req *http.Request, domain string, port int, isdomain bool) {
+	ci, flag, err := client.NewRemoteServer(receiver.cfg).ChooseServer()
 	if err != nil {
 		logger.Errorf("Http--->create server client error %s", err)
 		return
@@ -134,7 +135,7 @@ func (h *HProxy) handleHttpTunnel(rw http.ResponseWriter, req *http.Request, dom
 		defer func() {
 			cli.Conn.Close()
 		}()
-		err := h.handleSocks5(domain, port, isdomain, &cli.Conn)
+		var err = receiver.handleSocks5(domain, port, isdomain, &cli.Conn)
 		if err != nil {
 			logger.Errorf("Http--->handle error message %s\n", err)
 			return
@@ -162,7 +163,7 @@ func (h *HProxy) handleHttpTunnel(rw http.ResponseWriter, req *http.Request, dom
 	defer func() {
 		cli.Conn.Close()
 	}()
-	err = h.handleSocks5(domain, port, isdomain, cli.Conn)
+	err = receiver.handleSocks5(domain, port, isdomain, cli.Conn)
 	if err != nil {
 		logger.Errorf("Http--->handle error message %s\n", err)
 		return
@@ -192,8 +193,8 @@ func clearAndCopy(dest, src http.Header) {
 	copyHeaders(dest, src)
 }
 
-func (h *HProxy) handleSimpleHttp(rw http.ResponseWriter, req *http.Request) {
-	resp, err := h.tr.RoundTrip(req)
+func (receiver *httpReceiver) handleSimpleHTTP(rw http.ResponseWriter, req *http.Request) {
+	resp, err := receiver.tr.RoundTrip(req)
 	if err != nil {
 		http.Error(rw, err.Error(), 500)
 		return
@@ -229,7 +230,7 @@ func clearProxyHeader(req *http.Request) {
 }
 
 func clearHeaders(headers http.Header) {
-	for key, _ := range headers {
+	for key := range headers {
 		headers.Del(key)
 	}
 }
@@ -242,9 +243,9 @@ func copyHeaders(dst, src http.Header) {
 	}
 }
 
-func (h *HProxy) handleTunnel(con net.Conn, host string, port int, isdomain bool) {
-	con.Write(HTTP_200)
-	ci, flag, err := client.NewSP(h.cfg).ChooseServer()
+func (receiver *httpReceiver) handleTunnel(con net.Conn, host string, port int, isdomain bool) {
+	con.Write(httpOk)
+	ci, flag, err := client.NewRemoteServer(receiver.cfg).ChooseServer()
 	if err != nil {
 		logger.Errorf("create server client error %s", err)
 		return
@@ -255,7 +256,7 @@ func (h *HProxy) handleTunnel(con net.Conn, host string, port int, isdomain bool
 			cli.Conn.Close()
 			con.Close()
 		}()
-		err := h.handleSocks5(host, port, isdomain, &cli.Conn)
+		var err = receiver.handleSocks5(host, port, isdomain, &cli.Conn)
 		if err != nil {
 			logger.Errorf("Http--->handle error message %s\n", err)
 			return
@@ -266,7 +267,7 @@ func (h *HProxy) handleTunnel(con net.Conn, host string, port int, isdomain bool
 	defer func() {
 		cli.Conn.Close()
 	}()
-	err = h.handleSocks5(host, port, isdomain, cli.Conn)
+	err = receiver.handleSocks5(host, port, isdomain, cli.Conn)
 	if err != nil {
 		logger.Errorf("Http--->handle error message %s\n", err)
 		return
@@ -274,17 +275,17 @@ func (h *HProxy) handleTunnel(con net.Conn, host string, port int, isdomain bool
 	pipe(cli.Conn, con)
 }
 
-func (h *HProxy) handleSocks5(host string, port int, isdomain bool, write io.Writer) error {
+func (receiver *httpReceiver) handleSocks5(host string, port int, isdomain bool, write io.Writer) error {
 	data := make([]byte, 260)
 	pos := 0
 	if isdomain {
-		data[pos] = DOMAIN
+		data[pos] = domain
 		pos++
 		data[pos] = byte(len(host))
 		pos++
 		pos += copy(data[pos:], []byte(host))
 	} else {
-		data[pos] = IPV4
+		data[pos] = ipv4
 		pos++
 		pos += copy(data[pos:], net.ParseIP(host).To4())
 	}
@@ -299,7 +300,7 @@ func (h *HProxy) handleSocks5(host string, port int, isdomain bool, write io.Wri
 }
 
 func handleChina(con net.Conn, host string) {
-	con.Write(HTTP_200)
+	con.Write(httpOk)
 	cli := client.NewClient(host)
 	if cli == nil {
 		logger.Errorf("http----->error when create client")
@@ -312,7 +313,7 @@ func handleChina(con net.Conn, host string) {
 	pipe(cli.Conn, con)
 }
 
-func (h *HProxy) auth(rw http.ResponseWriter, req *http.Request) bool {
+func (receiver *httpReceiver) auth(rw http.ResponseWriter, req *http.Request) bool {
 	auth := req.Header.Get("Proxy-Authorization")
 	pair := strings.Replace(auth, "Basic ", "", 1)
 	userPass, err := base64.StdEncoding.DecodeString(pair)
@@ -331,7 +332,7 @@ func (h *HProxy) auth(rw http.ResponseWriter, req *http.Request) bool {
 		writeAuthFailed(rw)
 		return false
 	}
-	return users[0] == h.cfg.Username && users[1] == h.cfg.Password
+	return users[0] == receiver.cfg.Username && users[1] == receiver.cfg.Password
 
 }
 
@@ -344,5 +345,5 @@ func writeAuthFailed(rw http.ResponseWriter) {
 	}
 	defer client.Close()
 
-	client.Write(HTTP_407)
+	client.Write(httpAuthFailed)
 }

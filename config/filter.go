@@ -2,16 +2,18 @@ package config
 
 import (
 	"bufio"
-	gip "github.com/alecthomas/geoip"
-	"github.com/op/go-logging"
 	"net"
 	"os"
 	"strings"
+
+	gip "github.com/alecthomas/geoip"
+	"github.com/op/go-logging"
 )
 
 var logger = logging.MustGetLogger("config")
 var whitedb []string
 
+//ParserDomain ...
 func ParserDomain(domain string) bool {
 	ipadress, err := net.LookupIP(domain)
 	if err != nil {
@@ -38,10 +40,12 @@ func parser(ip net.IP) bool {
 	return false
 }
 
+//ParserIP ...
 func ParserIP(ip string) bool {
 	return parser(net.ParseIP(ip))
 }
 
+//IsInWhiteList ...
 func IsInWhiteList(domain string) bool {
 	if whitedb == nil {
 		//load from file

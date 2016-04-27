@@ -3,39 +3,42 @@ package conn
 import (
 	"crypto/tls"
 	"errors"
-	p "github.com/elians/fproxy/config"
-	"github.com/op/go-logging"
 	"net"
 	"strconv"
 	"time"
+
+	p "github.com/elians/fproxy/config"
+	"github.com/op/go-logging"
 )
 
 var logger = logging.MustGetLogger("conn")
 
+//RemoteServer ...
 type RemoteServer struct {
-	config *p.FileConfig
+	config *p.LocalConfig
 }
 
+//Client ...
 type Client struct {
 	Conn net.Conn
 }
 
-type Producer interface {
-	Close()
-}
-
+//SSLClient ...
 type SSLClient struct {
 	Conn tls.Conn
 }
 
+//Close ...
 func (c *Client) Close() {
 	c.Conn.Close()
 }
 
-func (s *SSLClient) Stop() {
+//Close ...
+func (s *SSLClient) Close() {
 	s.Conn.Close()
 }
 
+//NewClient ...
 func NewClient(host string) *Client {
 	conn, err := net.Dial("tcp", host)
 	if err != nil {
@@ -45,6 +48,7 @@ func NewClient(host string) *Client {
 	return &Client{conn}
 }
 
+//NewSSLClient ...
 func NewSSLClient(host string) *SSLClient {
 	conn, err := tls.Dial("tcp", host, p.NewSSLConfig())
 	if err != nil {
@@ -79,6 +83,7 @@ func (p *RemoteServer) ChooseServer() (interface{}, bool, error) {
 	return nil, false, errors.New("cannot find server")
 }
 
-func NewSP(config *p.FileConfig) *RemoteServer {
+//NewRemoteServer ...
+func NewRemoteServer(config *p.LocalConfig) *RemoteServer {
 	return &RemoteServer{config}
 }

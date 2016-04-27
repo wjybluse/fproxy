@@ -6,6 +6,6 @@ import (
 )
 
 func main() {
-	sf := config.NewServerConfig("./config/server.json")
-	server.CreateServer(sf)
+	sf := config.NewRemoteConfig("./config/server.json")
+	server.Server(sf)
 }
