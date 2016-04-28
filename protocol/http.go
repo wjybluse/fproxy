@@ -76,6 +76,7 @@ func (receiver *httpReceiver) handleHTTPS(rw http.ResponseWriter, req *http.Requ
 	domain, port := receiver.getHostAndPort("https", hst)
 	if ip := net.ParseIP(domain); ip != nil {
 		if config.ParserIP(domain) {
+			cli.Write(httpOk)
 			handleChina(cli, hst)
 			return
 		}
@@ -83,6 +84,7 @@ func (receiver *httpReceiver) handleHTTPS(rw http.ResponseWriter, req *http.Requ
 		return
 	}
 	if config.ParserDomain(domain) && !config.IsInWhiteList(domain) {
+		cli.Write(httpOk)
 		handleChina(cli, hst)
 		return
 	}

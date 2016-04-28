@@ -164,7 +164,6 @@ func (receiver *receiver) handleConnection(conn net.Conn) {
 	//need connect to remote server or not
 	if domian && !cfg.IsInWhiteList(strings.Split(host, ":")[0]) {
 		result := cfg.ParserDomain(strings.Split(host, ":")[0])
-		logger.Infof("result %s\n", result)
 		if result {
 			handleChina(conn, host)
 			return
