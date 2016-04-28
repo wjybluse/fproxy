@@ -117,7 +117,7 @@ func (receiver *receiver) request(conn net.Conn) ([]byte, string, bool, error) {
 			return nil, "", false, err
 		}
 	} else if n > hstLen {
-		logger.Errorf("Socks5--->fuck you ,some error")
+		logger.Errorf("Socks5--->some error")
 		return nil, "", false, errors.New("error socks data export")
 	}
 	//id type is 3
@@ -164,7 +164,7 @@ func (receiver *receiver) handleConnection(conn net.Conn) {
 	//need connect to remote server or not
 	if domian && !cfg.IsInWhiteList(strings.Split(host, ":")[0]) {
 		result := cfg.ParserDomain(strings.Split(host, ":")[0])
-		//if china
+		logger.Infof("result %s\n", result)
 		if result {
 			handleChina(conn, host)
 			return
@@ -187,7 +187,6 @@ func (receiver *receiver) handleConnection(conn net.Conn) {
 		defer func() {
 			cli.Conn.Close()
 			conn.Close()
-			logger.Errorf("Socks5--->local proxy closed...")
 		}()
 		if _, err = cli.Conn.Write(rawAddr); err != nil {
 			logger.Errorf("Socks5--->handle error message when write data %s \n", err)
@@ -202,7 +201,6 @@ func (receiver *receiver) handleConnection(conn net.Conn) {
 	defer func() {
 		cli.Conn.Close()
 		conn.Close()
-		logger.Errorf("Socks5--->local proxy closed...")
 	}()
 	if _, err = cli.Conn.Write(rawAddr); err != nil {
 		logger.Errorf("Socks5--->handle error message when write data %s \n", err)

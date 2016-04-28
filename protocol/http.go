@@ -300,15 +300,17 @@ func (receiver *httpReceiver) handleSocks5(host string, port int, isdomain bool,
 }
 
 func handleChina(con net.Conn, host string) {
-	con.Write(httpOk)
+	//con.Write(httpOk)
 	cli := client.NewClient(host)
 	if cli == nil {
 		logger.Errorf("http----->error when create client")
 		return
 	}
+	//config.SetTimeout(cli.Conn.SetReadDeadline, 5)
 	defer func() {
-		cli.Close()
+		logger.Info("close pipline")
 		con.Close()
+		cli.Close()
 	}()
 	pipe(cli.Conn, con)
 }
