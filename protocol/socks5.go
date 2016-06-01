@@ -43,27 +43,27 @@ type Tunnel interface {
 	Handle()
 }
 
-type receiver struct {
-	config   *cfg.LocalConfig
+type socks5Handler struct {
+	config   *cfg.Conf
 	listener net.Listener
 }
 
 //NewTunnel ...
-func NewTunnel(config *cfg.LocalConfig, listener net.Listener) Tunnel {
-	return &receiver{config, listener}
+func NewTunnel(config *cfg.Conf, listener net.Listener) Tunnel {
+	return &socks5Handler{config, listener}
 }
 
-func (receiver *receiver) handshake(conn net.Conn) error {
+func (sh *socks5Handler) handshake(conn net.Conn) error {
 	//the largest buffer size is 258
 	buf := make([]byte, 258)
 	var n int
 	var err error
 	if n, err = io.ReadAtLeast(conn, buf, nmethod+1); err != nil {
-		logger.Errorf("Socks5--->read data error %s\n", err)
+		logger.Errorf("[SOCKS_ERROR]:read data error %s\n", err)
 		return err
 	}
 	if buf[version] != socksV5 {
-		logger.Errorf("Socks5--->error version socks %v\n", buf[version])
+		logger.Errorf("[SOCKS_ERROR]:error version socks %v\n", buf[version])
 		return errSocks
 	}
 	nmethod := int(buf[nmethod])
@@ -74,7 +74,7 @@ func (receiver *receiver) handshake(conn net.Conn) error {
 		return errAuth
 	} else {
 		if _, err = io.ReadFull(conn, buf[n:msgLen]); err != nil {
-			logger.Errorf("Socks5--->read data error,cannot finish handshake %s\n", err)
+			logger.Errorf("[SOCKS_ERROR]:read data error,cannot finish handshake %s\n", err)
 			return err
 		}
 	}
@@ -82,13 +82,13 @@ func (receiver *receiver) handshake(conn net.Conn) error {
 	return err
 }
 
-func (receiver *receiver) request(conn net.Conn) ([]byte, string, bool, error) {
+func (sh *socks5Handler) request(conn net.Conn) ([]byte, string, bool, error) {
 	buf := make([]byte, 263)
 	//conn.SetReadDeadline(time.Now().Add(l.timeout))
 	var n int
 	var err error
 	if n, err = io.ReadAtLeast(conn, buf, domainLen+1); err != nil {
-		logger.Errorf("Socks5--->read data from client error %s\n", err)
+		logger.Errorf("[SOCKS_ERROR]:read data from client error %s\n", err)
 		return nil, "", false, err
 	}
 	if buf[version] != socksV5 {
@@ -96,7 +96,7 @@ func (receiver *receiver) request(conn net.Conn) ([]byte, string, bool, error) {
 	}
 	//cmd
 	if buf[1] != socksCmdConnect {
-		logger.Errorf("Socks5--->error socks cmd value is %v\n", buf[1])
+		logger.Errorf("[SOCKS_ERROR]:error socks cmd value is %v\n", buf[1])
 		return nil, "", false, errCmd
 	}
 	var hstLen int
@@ -113,11 +113,11 @@ func (receiver *receiver) request(conn net.Conn) ([]byte, string, bool, error) {
 	}
 	if n < hstLen {
 		if _, err := io.ReadFull(conn, buf[n:hstLen]); err != nil {
-			logger.Errorf("Socks5--->read data error %s\n", err)
+			logger.Errorf("[SOCKS_ERROR]:read data error %s\n", err)
 			return nil, "", false, err
 		}
 	} else if n > hstLen {
-		logger.Errorf("Socks5--->some error")
+		logger.Errorf("[SOCKS_ERROR]:some error")
 		return nil, "", false, errors.New("error socks data export")
 	}
 	//id type is 3
@@ -140,82 +140,65 @@ func (receiver *receiver) request(conn net.Conn) ([]byte, string, bool, error) {
 	return rawAddr, host, domian, nil
 }
 
-func (receiver *receiver) handleConnection(conn net.Conn) {
+func getHostAndLen(buf []byte) (host string, len int) {
+	return
+}
+
+func (sh *socks5Handler) handleConnection(conn net.Conn) {
 	var err error
-	if err = receiver.handshake(conn); err != nil {
-		logger.Errorf("Socks5--->handshake error %s\n", err)
+	if err = sh.handshake(conn); err != nil {
+		logger.Errorf("[SOCKS_ERROR]:handshake error %s\n", err)
 		return
 	}
-
-	//set default timeout
-	cfg.SetTimeout(conn.SetReadDeadline, receiver.config.Timeout)
-	//conn.SetReadDeadline(time.Now().Add(time.Duration(s.config.Timeout) * time.Second))
-
-	rawAddr, host, domian, err := receiver.request(conn)
+	rawAddr, host, domian, err := sh.request(conn)
 	if err != nil {
-		logger.Errorf("Socks5--->get host failed %s\n", err)
+		logger.Errorf("[SOCKS_ERROR]:get host failed %s\n", err)
 		return
 	}
 	_, err = conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x08, 0x43})
 	if err != nil {
-		logger.Errorf("Socks5--->error send data to client %s\n", err)
+		logger.Errorf("[SOCKS_ERROR]:error send data to client %s\n", err)
 		return
 	}
 	//need connect to remote server or not
-	if domian && !cfg.IsInWhiteList(strings.Split(host, ":")[0]) {
-		result := cfg.ParserDomain(strings.Split(host, ":")[0])
+	if domian && !cfg.Block(strings.Split(host, ":")[0]) {
+		result := cfg.FromDomain(strings.Split(host, ":")[0])
 		if result {
-			handleChina(conn, host)
+			internal(conn, host)
 			return
 		}
 	} else if !domian {
-		result := cfg.ParserIP(strings.Split(host, ":")[0])
+		result := cfg.FromIP(strings.Split(host, ":")[0])
 		if result {
-			handleChina(conn, host)
+			internal(conn, host)
 			return
 		}
 	}
-	ci, flag, err := client.NewRemoteServer(receiver.config).ChooseServer()
+	connector, err := client.NewClient(*sh.config)
 	if err != nil {
-		logger.Errorf("Socks5--->connect to server failed %s", err)
+		logger.Errorf("[SOCKS_ERROR]:connect to server failed %s", err)
 		return
 	}
-	if flag {
-		cli := ci.(*client.SSLClient)
-		cfg.SetTimeout(cli.Conn.SetReadDeadline, receiver.config.Timeout)
-		defer func() {
-			cli.Conn.Close()
-			conn.Close()
-		}()
-		if _, err = cli.Conn.Write(rawAddr); err != nil {
-			logger.Errorf("Socks5--->handle error message when write data %s \n", err)
-			return
-		}
-		pipe(&cli.Conn, conn)
-		return
-	}
-	cli := ci.(*client.Client)
-	cfg.SetTimeout(cli.Conn.SetReadDeadline, receiver.config.Timeout)
-	//cli.Conn.SetReadDeadline(time.Now().Add(time.Duration(s.config.Timeout) * time.Second))
 	defer func() {
-		cli.Conn.Close()
+		connector.Destory()
 		conn.Close()
 	}()
-	if _, err = cli.Conn.Write(rawAddr); err != nil {
-		logger.Errorf("Socks5--->handle error message when write data %s \n", err)
+	con, _ := connector.Connect()
+	if _, err = con.Write(rawAddr); err != nil {
+		logger.Errorf("[SOCKS_ERROR]:handle error message when write data %s \n", err)
 		return
 	}
-	pipe(cli.Conn, conn)
+	pipe(con, conn)
 }
 
 //Handle ...
-func (receiver *receiver) Handle() {
+func (sh *socks5Handler) Handle() {
 	for {
-		conn, err := receiver.listener.Accept()
+		conn, err := sh.listener.Accept()
 		if err != nil {
-			logger.Errorf("Socks5--->handle connection error %s\n", err)
+			logger.Errorf("[SOCKS_ERROR]:handle connection error %s\n", err)
 			continue
 		}
-		go receiver.handleConnection(conn)
+		go sh.handleConnection(conn)
 	}
 }

@@ -16,6 +16,7 @@ var logger = logging.MustGetLogger("conn")
 //Connector ...
 type Connector interface {
 	//destory conncetor
+	Connect() (net.Conn, error)
 	Destory()
 }
 
@@ -37,9 +38,8 @@ func (cli *client) Destory() {
 	cli.Conn.Close()
 }
 
-func (cli *sslClient) Connect() (*tls.Conn, error) {
-
-	return cli.Conn, nil
+func (cli *sslClient) Connect() (net.Conn, error) {
+	return net.Conn(cli.Conn), nil
 }
 
 func (cli *sslClient) Destory() {
@@ -62,6 +62,14 @@ func createClient(host string) (*client, error) {
 		return nil, err
 	}
 	return &client{conn}, nil
+}
+
+//NewConnector ...
+func NewConnector(host string, isSSL bool) (Connector, error) {
+	if isSSL {
+		return createClient(host)
+	}
+	return createClient(host)
 }
 
 //NewClient ...
