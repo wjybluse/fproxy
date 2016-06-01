@@ -6,6 +6,6 @@ import (
 )
 
 func main() {
-	conf := config.NewLocalConfig("./config/conf.json")
-	local.Server(conf)
+	conf := config.Create("./config/conf.json", config.Conf{})
+	local.Server(conf.(config.Conf))
 }

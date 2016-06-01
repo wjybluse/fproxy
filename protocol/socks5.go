@@ -69,7 +69,7 @@ func (receiver *receiver) handshake(conn net.Conn) error {
 	nmethod := int(buf[nmethod])
 	msgLen := nmethod + 2
 	if n == msgLen {
-		logger.Error("handshake done,ok")
+		//TODO
 	} else if msgLen < n {
 		return errAuth
 	} else {

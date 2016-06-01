@@ -6,10 +6,11 @@ import (
 )
 
 func TestParserOK(t *testing.T) {
-	cf := NewLocalConfig("../tpl/conf.json")
-	if cf.Local != "127.0.0.1" {
-		t.Fatalf("error...%s", cf.Local)
+	cf := Create("../tpl/conf.json", Conf{})
+	lc := cf.(Conf)
+	if lc.Local != "127.0.0.1" {
+		t.Fatalf("error...%s", lc.Local)
 		t.Fail()
 	}
-	fmt.Printf("find value local %s,local port %d, vps %v", cf.Local, cf.LocalPort, cf.Servers)
+	fmt.Printf("find value local %s,local port %d, vps %v", lc.Local, lc.LocalPort, lc.Servers)
 }

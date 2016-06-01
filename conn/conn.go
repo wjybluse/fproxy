@@ -3,9 +3,9 @@ package conn
 import (
 	"crypto/tls"
 	"errors"
+	"math/rand"
 	"net"
 	"strconv"
-	"time"
 
 	p "github.com/elians/fproxy/config"
 	"github.com/op/go-logging"
@@ -13,77 +13,83 @@ import (
 
 var logger = logging.MustGetLogger("conn")
 
-//RemoteServer ...
-type RemoteServer struct {
-	config *p.LocalConfig
+//Connector ...
+type Connector interface {
+	//destory conncetor
+	Destory()
 }
 
 //Client ...
-type Client struct {
+type client struct {
 	Conn net.Conn
 }
 
 //SSLClient ...
-type SSLClient struct {
-	Conn tls.Conn
+type sslClient struct {
+	Conn *tls.Conn
 }
 
-//Close ...
-func (c *Client) Close() {
-	c.Conn.Close()
+func (cli *client) Connect() (net.Conn, error) {
+	return cli.Conn, nil
 }
 
-//Close ...
-func (s *SSLClient) Close() {
-	s.Conn.Close()
+func (cli *client) Destory() {
+	cli.Conn.Close()
+}
+
+func (cli *sslClient) Connect() (*tls.Conn, error) {
+
+	return cli.Conn, nil
+}
+
+func (cli *sslClient) Destory() {
+	cli.Conn.Close()
+}
+
+func createSSLClient(host string) (*sslClient, error) {
+	conn, err := tls.Dial("tcp", host, p.NewSSLConf())
+	if err != nil {
+		logger.Errorf("[ERROR]:--->cannnot create ssl client %s\n", err)
+		return nil, err
+	}
+	return &sslClient{conn}, nil
+}
+
+func createClient(host string) (*client, error) {
+	conn, err := net.Dial("tcp", host)
+	if err != nil {
+		logger.Errorf("[ERROR]:--->cannnot create client %s\n", err)
+		return nil, err
+	}
+	return &client{conn}, nil
 }
 
 //NewClient ...
-func NewClient(host string) *Client {
-	conn, err := net.Dial("tcp", host)
-	if err != nil {
-		logger.Errorf("Error:--->cannnot create client %s\n", err)
-		return nil
+func NewClient(conf p.Conf) (Connector, error) {
+	if len(conf.Servers) < 0 {
+		return nil, errors.New("[ERROR]:No server can be used")
 	}
-	return &Client{conn}
-}
-
-//NewSSLClient ...
-func NewSSLClient(host string) *SSLClient {
-	conn, err := tls.Dial("tcp", host, p.NewSSLConfig())
-	if err != nil {
-		logger.Errorf("Error:--->cannnot create client %s\n", err)
-		return nil
-	}
-	return &SSLClient{*conn}
-}
-
-func (p *RemoteServer) ChooseServer() (interface{}, bool, error) {
-	if len(p.config.Servers) <= 0 {
-		return nil, false, errors.New("invalid servers")
-	}
-	for _, server := range p.config.Servers {
-		if server.SSL {
-			cli := NewSSLClient(net.JoinHostPort(server.Host, strconv.Itoa(server.Port)))
-			if cli == nil {
-				logger.Errorf("cannot connect to server %v via ssl \n", server)
-				continue
-			}
-			cli.Conn.SetReadDeadline(time.Now().Add(time.Duration(server.Timeout) * time.Second))
-			return cli, true, nil
+	// use server id after this version
+	server, _ := roundRobin(0, conf)
+	if conf.SSL {
+		cli, err := createSSLClient(server)
+		if err != nil {
+			logger.Errorf("[ERROR]:create ssl client error.rebalance %s\n", err)
+			return nil, err
 		}
-		cli := NewClient(net.JoinHostPort(server.Host, strconv.Itoa(server.Port)))
-		if cli == nil {
-			logger.Errorf("cannot connect to server %v \n", server)
-			continue
-		}
-		cli.Conn.SetReadDeadline(time.Now().Add(time.Duration(server.Timeout) * time.Second))
-		return cli, true, nil
+		return cli, nil
 	}
-	return nil, false, errors.New("cannot find server")
+	cli, err := createClient(server)
+	if err != nil {
+		logger.Errorf("[ERROR]:create client error.rebalance %s\n", err)
+		return nil, err
+	}
+	return cli, nil
 }
-
-//NewRemoteServer ...
-func NewRemoteServer(config *p.LocalConfig) *RemoteServer {
-	return &RemoteServer{config}
+func roundRobin(serverid int, conf p.Conf) (string, int) {
+	if serverid == 0 {
+		serverid = rand.Intn(len(conf.Servers))
+	}
+	server := conf.Servers[serverid]
+	return net.JoinHostPort(server.Host, strconv.Itoa(server.Port)), serverid
 }

@@ -42,8 +42,8 @@ type socksReceiver struct {
 	cfg      *c.RemoteConfig
 }
 
-func (receiver *socksReceiver) handleConnection(conn net.Conn) {
-	data, host, err := receiver.request(conn)
+func (sr *socksReceiver) handleConnection(conn net.Conn) {
+	data, host, err := handleRequest(conn)
 	if err != nil {
 		logger.Errorf("Server:---->cannot find host %s\n", err)
 		return
@@ -54,81 +54,69 @@ func (receiver *socksReceiver) handleConnection(conn net.Conn) {
 		return
 	}
 	defer func() {
-		//fixe bug when cli is nil
-		if cli != nil {
-			cli.Close()
-		}
+		// close if exit
+		cli.Close()
 		conn.Close()
 	}()
 	if _, err := cli.Conn.Write(data); err != nil {
-		logger.Error("Server:----->write data error")
+		logger.Errorf("[ERROR]:write data error %s\n", err)
 		return
 	}
 
-	c.SetTimeout(cli.Conn.SetReadDeadline, receiver.cfg.Timeout)
-	c.SetTimeout(conn.SetReadDeadline, receiver.cfg.Timeout)
+	c.SetTimeout(cli.Conn.SetReadDeadline, sr.cfg.Timeout)
+	c.SetTimeout(conn.SetReadDeadline, sr.cfg.Timeout)
 	//for comment
 	go io.Copy(cli.Conn, conn)
 	io.Copy(conn, cli.Conn)
 
 }
 
-func (receiver *socksReceiver) request(conn net.Conn) ([]byte, string, error) {
+func handleRequest(conn net.Conn) (rawAddr []byte, host string, err error) {
+	//max length
 	buf := make([]byte, 260)
-	//conn.SetReadDeadline(time.Now().Add(l.timeout))
+	//declare read bit
 	var n int
-	var err error
 	if n, err = io.ReadAtLeast(conn, buf, domainLen+1); err != nil {
-		logger.Errorf("Server:---->read data from client error %s\n", err)
-		return nil, "", err
+		logger.Errorf("[ERROR]:read data from client error %s\n", err)
+		return
 	}
-	var hstLen int
-	//host item like ipv4,ipv6,domain and so on
-	switch buf[0] {
-	case ipv4:
-		hstLen = ipv4Len
-	case ipv6:
-		hstLen = ipv6Len
-	case domain:
-		hstLen = int(buf[domainLen]) + domainTLen
-	default:
-		return nil, "", errAddr
-	}
-	var rawAddr []byte
-	if n < hstLen {
-		if _, err := io.ReadFull(conn, buf[n:hstLen]); err != nil {
-			logger.Errorf("Server:---->read data error %s\n", err)
-			return nil, "", err
+	hstlen, maxlen := getHostTypeAndLen(buf)
+	if hstlen > n {
+		if _, err = io.ReadFull(conn, buf[n:hstlen]); err != nil {
+			logger.Errorf("[ERROR]:Read full data from client error %s\n", err)
+			return
 		}
-	} else if n > hstLen {
-		logger.Error("Server:---->fuck you ,some error")
-		rawAddr = buf[hstLen:n]
 	}
-	//id type is 3
-	//ip start idex
-	ipIndex := 1
-	var hst string
-	switch buf[0] {
-	case ipv4:
-		hst = net.IP(buf[ipIndex : ipIndex+net.IPv4len]).String()
-	case ipv6:
-		hst = net.IP(buf[ipIndex : ipIndex+net.IPv6len]).String()
-	case domain:
-		hst = string(buf[2 : 2+buf[domainLen]])
+	rawAddr = buf[hstlen:n]
+	port := binary.BigEndian.Uint16(buf[hstlen-2 : hstlen])
+	if buf[0] == domain {
+		host = net.JoinHostPort(string(buf[2:maxlen]), strconv.Itoa(int(port)))
+		return
 	}
-	port := binary.BigEndian.Uint16(buf[hstLen-2 : hstLen])
-	host := net.JoinHostPort(hst, strconv.Itoa(int(port)))
-	return rawAddr, host, nil
+	host = net.JoinHostPort(string(buf[1:1+maxlen]), strconv.Itoa(int(port)))
+	return
 }
 
-func (receiver *socksReceiver) Handle() {
+func getHostTypeAndLen(buf []byte) (int, int) {
+	hostType := buf[0]
+	if hostType == ipv4 {
+		return ipv4Len, net.IPv4len
+	}
+	if hostType == ipv6 {
+		return ipv6Len, net.IPv6len
+	}
+	// default is domain
+	return int(buf[domainLen]) + domainTLen, 2 + int(buf[domainLen])
+}
+
+func (sr *socksReceiver) Handle() {
 	for {
-		conn, err := receiver.listener.Accept()
+		conn, err := sr.listener.Accept()
 		if err != nil {
-			logger.Errorf("Server--->socks5 error %s", err)
+			logger.Errorf("[ERROR]:create connection with client error %s", err)
 			continue
 		}
-		go receiver.handleConnection(conn)
+		go sr.handleConnection(conn)
 	}
 
 }
