@@ -7,7 +7,7 @@ import (
 	"net"
 	"strconv"
 
-	p "github.com/elians/fproxy/config"
+	"github.com/elians/fproxy/config"
 	"github.com/op/go-logging"
 )
 
@@ -17,7 +17,7 @@ var logger = logging.MustGetLogger("conn")
 type Connector interface {
 	//destory conncetor
 	Connect() (net.Conn, error)
-	Destory()
+	Close()
 }
 
 //Client ...
@@ -34,7 +34,7 @@ func (cli *client) Connect() (net.Conn, error) {
 	return cli.Conn, nil
 }
 
-func (cli *client) Destory() {
+func (cli *client) Close() {
 	cli.Conn.Close()
 }
 
@@ -42,14 +42,14 @@ func (cli *sslClient) Connect() (net.Conn, error) {
 	return net.Conn(cli.Conn), nil
 }
 
-func (cli *sslClient) Destory() {
+func (cli *sslClient) Close() {
 	cli.Conn.Close()
 }
 
 func createSSLClient(host string) (*sslClient, error) {
-	conn, err := tls.Dial("tcp", host, p.NewSSLConf())
+	conn, err := tls.Dial("tcp", host, config.SslConfig())
 	if err != nil {
-		logger.Errorf("[ERROR]:--->cannnot create ssl client %s\n", err)
+		logger.Errorf("[ERROR]:cannnot create ssl client %s\n", err)
 		return nil, err
 	}
 	return &sslClient{conn}, nil
@@ -58,7 +58,7 @@ func createSSLClient(host string) (*sslClient, error) {
 func createClient(host string) (*client, error) {
 	conn, err := net.Dial("tcp", host)
 	if err != nil {
-		logger.Errorf("[ERROR]:--->cannnot create client %s\n", err)
+		logger.Errorf("[ERROR]:cannnot create client %s\n", err)
 		return nil, err
 	}
 	return &client{conn}, nil
@@ -73,7 +73,7 @@ func NewConnector(host string, isSSL bool) (Connector, error) {
 }
 
 //NewClient ...
-func NewClient(conf p.Conf) (Connector, error) {
+func NewClient(conf config.Conf) (Connector, error) {
 	if len(conf.Servers) < 0 {
 		return nil, errors.New("[ERROR]:No server can be used")
 	}
@@ -94,7 +94,7 @@ func NewClient(conf p.Conf) (Connector, error) {
 	}
 	return cli, nil
 }
-func roundRobin(serverid int, conf p.Conf) (string, int) {
+func roundRobin(serverid int, conf config.Conf) (string, int) {
 	if serverid == 0 {
 		serverid = rand.Intn(len(conf.Servers))
 	}

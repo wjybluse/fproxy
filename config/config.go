@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+	"github.com/op/go-logging"
 )
+
+var logger = logging.MustGetLogger("config")
 
 //Conf ...
 type Conf struct {
@@ -32,7 +35,7 @@ type ServerConf struct {
 }
 
 //Create ...
-func Create(filename string, cfg interface{}) interface{} {
+func Create(filename string, cfg interface{}){
 	f, err := os.Open(filename)
 	if err != nil {
 		logger.Errorf("[ERROR]:open file error...%s.file name %s\n", err, filename)
@@ -47,5 +50,4 @@ func Create(filename string, cfg interface{}) interface{} {
 		logger.Errorf("[ERROR]:parser json error %s\n", err)
 		os.Exit(1)
 	}
-	return cfg
 }

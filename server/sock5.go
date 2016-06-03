@@ -7,9 +7,10 @@ import (
 	"net"
 	"strconv"
 
-	c "github.com/elians/fproxy/config"
-	client "github.com/elians/fproxy/conn"
+	"github.com/elians/fproxy/config"
+	c "github.com/elians/fproxy/conn"
 	"github.com/elians/fproxy/protocol"
+	"github.com/op/go-logging"
 )
 
 var (
@@ -37,37 +38,35 @@ const (
 	domainTLen = 1 + 1 + 2           // 1addrType + 1addrLen + 2port, plus addrLen
 )
 
+var logger = logging.MustGetLogger("server")
+
 type socksReceiver struct {
-	listener net.Listener
-	cfg      *c.RemoteConfig
+	listener *net.Listener
+	cfg      *config.ServerConf
 }
 
 func (sr *socksReceiver) handleConnection(conn net.Conn) {
 	data, host, err := handleRequest(conn)
 	if err != nil {
-		logger.Errorf("Server:---->cannot find host %s\n", err)
+		logger.Errorf("[SERVER]:cannot find host %s\n", err)
 		return
 	}
-	cli := client.NewClient(host)
-	if cli == nil {
-		logger.Error("handle connection error,cannot create client.")
+	defer conn.Close()
+	connector,err := c.NewConnector(host, false)
+	if err != nil {
+		logger.Errorf("[SERVER]:create client failed %s \n",err)
 		return
 	}
-	defer func() {
-		// close if exit
-		cli.Close()
-		conn.Close()
-	}()
-	if _, err := cli.Conn.Write(data); err != nil {
+	defer connector.Close()
+	con,_ := connector.Connect()
+	if _, err := con.Write(data); err != nil {
 		logger.Errorf("[ERROR]:write data error %s\n", err)
 		return
 	}
 
-	c.SetTimeout(cli.Conn.SetReadDeadline, sr.cfg.Timeout)
-	c.SetTimeout(conn.SetReadDeadline, sr.cfg.Timeout)
 	//for comment
-	go io.Copy(cli.Conn, conn)
-	io.Copy(conn, cli.Conn)
+	go io.Copy(con, conn)
+	io.Copy(conn, con)
 
 }
 
@@ -111,7 +110,7 @@ func getHostTypeAndLen(buf []byte) (int, int) {
 
 func (sr *socksReceiver) Handle() {
 	for {
-		conn, err := sr.listener.Accept()
+		conn, err := (*sr.listener).Accept()
 		if err != nil {
 			logger.Errorf("[ERROR]:create connection with client error %s", err)
 			continue
@@ -121,7 +120,7 @@ func (sr *socksReceiver) Handle() {
 
 }
 
-//NewSocksTunnel ...
-func NewSocksTunnel(listener net.Listener, cfg *c.RemoteConfig) protocol.Tunnel {
-	return &socksReceiver{listener, cfg}
+//SocksServer ...
+func SocksServer(listener *net.Listener, sf *config.ServerConf) protocol.GreenTunnel{
+	return &socksReceiver{listener, sf}
 }
