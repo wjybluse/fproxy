@@ -98,6 +98,6 @@ func roundRobin(serverid int, conf p.Conf) (string, int) {
 	if serverid == 0 {
 		serverid = rand.Intn(len(conf.Servers))
 	}
-	server := conf.Servers[serverid]
+	server := conf.Servers[serverid-1]
 	return net.JoinHostPort(server.Host, strconv.Itoa(server.Port)), serverid
 }
