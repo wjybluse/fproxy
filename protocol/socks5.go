@@ -1,59 +1,28 @@
 package protocol
 
 import (
-	"encoding/binary"
 	"errors"
 	"io"
 	"net"
-	"strconv"
 	"strings"
+	"encoding/binary"
+	"strconv"
 
-	cfg "github.com/elians/fproxy/config"
-	client "github.com/elians/fproxy/conn"
+	"github.com/elians/fproxy/config"
+	c "github.com/elians/fproxy/conn"
 )
 
-var (
-	errMethod = errors.New("Error method")
-	errAuth   = errors.New("socks auth error")
-	errSocks  = errors.New("error socks version")
-	errCmd    = errors.New("error socks cmd")
-	errAddr   = errors.New("error ip address")
-)
-
-const (
-	//for handshake
-	version = 0
-	nmethod = 1
-
-	socksV5         = 5
-	socksCmdConnect = 1
-
-	domainLen = 4
-	ipv4      = 1
-	ipv6      = 4
-	domain    = 3
-
-	ipv4Len    = 3 + 1 + net.IPv4len + 2 //3(ver+cmd+rsv) + 1addrType + ipv4 + 2port
-	ipv6Len    = 3 + 1 + net.IPv6len + 2 // 3(ver+cmd+rsv) + 1addrType + ipv6 + 2port
-	domainTLen = 3 + 1 + 1 + 2           // 3 + 1addrType + 1addrLen + 2port, plus addrLen
-)
-
-//Tunnel ...
-type Tunnel interface {
-	Handle()
+type socks5Wrap struct {
+	conf   *config.Conf
+	listener *net.Listener
 }
 
-type socks5Handler struct {
-	config   *cfg.Conf
-	listener net.Listener
+//Socks5Wrap ...
+func Socks5Wrap(listener *net.Listener,conf *config.Conf) GreenTunnel {
+	return &socks5Wrap{conf, listener}
 }
 
-//NewTunnel ...
-func NewTunnel(config *cfg.Conf, listener net.Listener) Tunnel {
-	return &socks5Handler{config, listener}
-}
-
-func (sh *socks5Handler) handshake(conn net.Conn) error {
+func (sw *socks5Wrap) handshake(conn net.Conn) error {
 	//the largest buffer size is 258
 	buf := make([]byte, 258)
 	var n int
@@ -82,123 +51,113 @@ func (sh *socks5Handler) handshake(conn net.Conn) error {
 	return err
 }
 
-func (sh *socks5Handler) request(conn net.Conn) ([]byte, string, bool, error) {
+func request(c net.Conn)(string, bool, []byte,error){
 	buf := make([]byte, 263)
-	//conn.SetReadDeadline(time.Now().Add(l.timeout))
-	var n int
+	var isDomain = false
 	var err error
-	if n, err = io.ReadAtLeast(conn, buf, domainLen+1); err != nil {
+	var n,hostlen,typeLen int
+	if n, err = io.ReadAtLeast(c, buf, domainLen+1); err != nil {
 		logger.Errorf("[SOCKS_ERROR]:read data from client error %s\n", err)
-		return nil, "", false, err
+		return "", false, nil,err
 	}
-	if buf[version] != socksV5 {
-		return nil, "", false, errSocks
+	if buf[version] != socksV5{
+		logger.Errorf("[SOCKS_ERROR]:invalid version %b \n",buf[version])
+		return  "", false, nil,errSocks
 	}
-	//cmd
 	if buf[1] != socksCmdConnect {
 		logger.Errorf("[SOCKS_ERROR]:error socks cmd value is %v\n", buf[1])
-		return nil, "", false, errCmd
+		return "", false, nil,errCmd
 	}
-	var hstLen int
-	//host item like ipv4,ipv6,domian and so on
-	switch buf[3] {
-	case ipv4:
-		hstLen = ipv4Len
-	case ipv6:
-		hstLen = ipv6Len
-	case domain:
-		hstLen = int(buf[domainLen]) + domainTLen
-	default:
-		return nil, "", false, errAddr
+	ipType := buf[3]
+	switch ipType {
+	     case ipv4:{
+	         hostlen = ipv4Len
+		       typeLen = net.IPv4len
+				 }
+			 case ipv6:{
+		       hostlen = ipv6Len
+			     typeLen = ipv6Len
+				 }
+			 case domain:{
+			     hostlen = int(buf[domainLen]) + domainTLen
+				   typeLen = domainLen
+				   isDomain = true
+				 }
+			 default:{
+			     logger.Errorf("[SOCKS_ERROR]:don't know the type of address %b \n",ipType)
+				   return "",false,nil,errors.New("invalid address type")}
 	}
-	if n < hstLen {
-		if _, err := io.ReadFull(conn, buf[n:hstLen]); err != nil {
+	if n < hostlen {
+		if _, err := io.ReadFull(c, buf[n:hostlen]); err != nil {
 			logger.Errorf("[SOCKS_ERROR]:read data error %s\n", err)
-			return nil, "", false, err
+			return "", false, nil,err
 		}
-	} else if n > hstLen {
-		logger.Errorf("[SOCKS_ERROR]:some error")
-		return nil, "", false, errors.New("error socks data export")
+	} else if n > hostlen {
+		logger.Errorf("[SOCKS_ERROR]:some error n is %d,hostlen is %d \n",n,hostlen)
+		return "", false,nil, errors.New("error socks data export")
 	}
-	//id type is 3
-	//ip start idex
-	ipIndex := 4
-	domian := false
-	rawAddr := buf[3:hstLen]
-	var hst string
-	switch buf[3] {
-	case ipv4:
-		hst = net.IP(buf[ipIndex : ipIndex+net.IPv4len]).String()
-	case ipv6:
-		hst = net.IP(buf[ipIndex : ipIndex+net.IPv6len]).String()
-	case domain:
-		hst = string(buf[5 : 5+buf[domainLen]])
-		domian = true
+	var host string
+	if isDomain{
+		host = string(buf[5 : 5+buf[typeLen]])
+	}else{
+		host = net.IP(buf[4 : 4+typeLen]).String()
 	}
-	port := binary.BigEndian.Uint16(buf[hstLen-2 : hstLen])
-	host := net.JoinHostPort(hst, strconv.Itoa(int(port)))
-	return rawAddr, host, domian, nil
+	rawAddr := buf[3:hostlen]
+	port := binary.BigEndian.Uint16(buf[hostlen-2 : hostlen])
+  return net.JoinHostPort(host, strconv.Itoa(int(port))),isDomain,rawAddr,nil
 }
 
-func getHostAndLen(buf []byte) (host string, len int) {
-	return
-}
 
-func (sh *socks5Handler) handleConnection(conn net.Conn) {
-	var err error
-	if err = sh.handshake(conn); err != nil {
+func (sw *socks5Wrap) connect(conn net.Conn) {
+	if err := sw.handshake(conn); err != nil {
 		logger.Errorf("[SOCKS_ERROR]:handshake error %s\n", err)
 		return
 	}
-	rawAddr, host, domian, err := sh.request(conn)
-	if err != nil {
-		logger.Errorf("[SOCKS_ERROR]:get host failed %s\n", err)
-		return
-	}
-	_, err = conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x08, 0x43})
+	_, err := conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x08, 0x43})
 	if err != nil {
 		logger.Errorf("[SOCKS_ERROR]:error send data to client %s\n", err)
 		return
 	}
+	defer conn.Close()
+	host, domian, rawAddr,err := request(conn)
+	if err!=nil{
+		logger.Errorf("[SOCKS_ERROR]:handle error message %s \n", err)
+		return
+	}
 	//need connect to remote server or not
-	if domian && !cfg.Block(strings.Split(host, ":")[0]) {
-		result := cfg.FromDomain(strings.Split(host, ":")[0])
-		if result {
-			internal(conn, host)
+	if domian && isblock(strings.Split(host, ":")[0]) {
+		if result := filterDomain(strings.Split(host, ":")[0]);result{
+			directConnect(host,conn)
 			return
 		}
 	} else if !domian {
-		result := cfg.FromIP(strings.Split(host, ":")[0])
-		if result {
-			internal(conn, host)
+		if result := filterIP(strings.Split(host, ":")[0]);result{
+			directConnect(host,conn)
 			return
 		}
 	}
-	connector, err := client.NewClient(*sh.config)
+	connector, err := c.NewClient(*sw.conf)
 	if err != nil {
 		logger.Errorf("[SOCKS_ERROR]:connect to server failed %s", err)
 		return
 	}
-	defer func() {
-		connector.Destory()
-		conn.Close()
-	}()
+	defer connector.Close()
 	con, _ := connector.Connect()
-	if _, err = con.Write(rawAddr); err != nil {
+	if _, err := con.Write(rawAddr); err != nil {
 		logger.Errorf("[SOCKS_ERROR]:handle error message when write data %s \n", err)
 		return
 	}
-	pipe(con, conn)
+	exchange(con, conn)
 }
 
 //Handle ...
-func (sh *socks5Handler) Handle() {
+func (sw *socks5Wrap) Handle() {
 	for {
-		conn, err := sh.listener.Accept()
+		conn, err := (*sw.listener).Accept()
 		if err != nil {
 			logger.Errorf("[SOCKS_ERROR]:handle connection error %s\n", err)
 			continue
 		}
-		go sh.handleConnection(conn)
+		go sw.connect(conn)
 	}
 }

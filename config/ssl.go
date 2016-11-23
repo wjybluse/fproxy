@@ -10,11 +10,11 @@ var (
 	certFile = flag.String("certfile", "./certs/fproxy.pem", "for ssl use")
 )
 
-//NewSSLConf ...
-func NewSSLConf() *tls.Config {
+//SslConfig ...
+func SslConfig() *tls.Config {
 	cert, err := tls.LoadX509KeyPair(*certFile, *keyFile)
 	if err != nil {
-		logger.Errorf("ERROR:---->cannot load file %s\n", err)
+		logger.Errorf("[ERROR]:cannot load file %s\n", err)
 		return nil
 	}
 	return &tls.Config{

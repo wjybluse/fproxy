@@ -3,38 +3,35 @@ package protocol
 import (
 	"bufio"
 	"encoding/base64"
-	"encoding/binary"
 	"io"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
-
+  "github.com/elians/fproxy/conn"
 	"github.com/elians/fproxy/config"
-	client "github.com/elians/fproxy/conn"
-	"github.com/op/go-logging"
 )
 
-var logger = logging.MustGetLogger("protocol")
+
 
 var (
 	httpOk         = []byte("HTTP/1.1 200 Connection Established\r\n\r\n")
 	httpAuthFailed = []byte("HTTP/1.1 407 Proxy Authorization Required\r\nProxy-Authenticate: Basic realm=\"Secure Proxys\"\r\n\r\n")
 )
 
-type httpHandler struct {
-	listener net.Listener
-	cfg      *config.Conf
-	tr       *http.Transport
+type httpWrap struct {
+	listener        *net.Listener
+	conf            *config.Conf
+	transport       *http.Transport
 }
 
-//NewHTTPTunnel ...
-func NewHTTPTunnel(listener net.Listener, cfg *config.Conf) Tunnel {
-	return &httpHandler{listener: listener, cfg: cfg, tr: &http.Transport{Proxy: http.ProxyFromEnvironment, DisableKeepAlives: true}}
+//HTTPWraper ...
+func HTTPWraper(listener *net.Listener, conf *config.Conf) GreenTunnel {
+	return &httpWrap{listener: listener, conf: conf, transport: &http.Transport{Proxy: http.ProxyFromEnvironment, DisableKeepAlives: true}}
 }
 
-func (hr *httpHandler) Handle() {
-	err := http.Serve(hr.listener, hr)
+func (hr *httpWrap) Handle() {
+	err := http.Serve(*hr.listener, hr)
 	if err != nil {
 		logger.Errorf("[HTTP_ERROR]:handle error server error when ")
 		return
@@ -42,7 +39,7 @@ func (hr *httpHandler) Handle() {
 	logger.Errorf("[HTTP_ERROR]:handle listener ..... start")
 }
 
-func (hr *httpHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+func (hr *httpWrap) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	defer func() {
 		if err := recover(); err != nil {
 			logger.Errorf("[HTTP_ERROR]:handle error when clean...%s\n", err)
@@ -50,100 +47,111 @@ func (hr *httpHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 	}()
 
-	meth := strings.ToLower(req.Method)
-	if meth == "connect" {
-		hr.httpsTrans(rw, req)
+  //if methos is connect,use https default else use http
+	if req.Method == "CONNECT"{
+		hr.httpsConnect(rw,req)
 		return
 	}
-	hr.handleHTTP(rw, req)
+	hr.httpConnect(rw, req)
 }
 
-func (hr *httpHandler) httpsTrans(rw http.ResponseWriter, req *http.Request) {
-	hj := rw.(http.Hijacker)
-	cli, _, err := hj.Hijack()
+func (hr *httpWrap) httpsConnect(rw http.ResponseWriter, req *http.Request) {
+	hijack, _, err := rw.(http.Hijacker).Hijack()
 	if err != nil {
-		logger.Errorf("[HTTP_ERROR]:handle hijack error %s", err)
+		logger.Errorf("[HTTP_ERROR]:handle hijack error %s\n", err)
 		return
 	}
-	hst := req.URL.Host
-	domain, port := hr.getHostAndPort("https", hst)
-	if ip := net.ParseIP(domain); ip != nil {
-		if config.FromIP(domain) {
-			cli.Write(httpOk)
-			internal(cli, hst)
+  var host = req.URL.Host
+	host, port := parserHost(host)
+	if port == 0 {
+		//use default https port
+		port= 443
+	}
+	defer func(){
+	  if hijack!=nil{
+			hijack.Close()
+		}
+	}()
+
+	ipAddress := net.ParseIP(host)
+	if ipAddress == nil{
+		logger.Warningf("[WARN]cannot find host info %s \n", host)
+		if filterDomain(host) && !isblock(host) {
+			hijack.Write(httpOk)
+			directConnect(host, hijack)
 			return
 		}
-		hr.trans(cli, domain, port, false)
+		hr.httpsTransfor(hijack, host, port, true)
 		return
 	}
-	if config.FromDomain(domain) && !config.Block(domain) {
-		cli.Write(httpOk)
-		internal(cli, hst)
+	if filterIP(host) {
+		//write message to client.handshake ok
+		hijack.Write(httpOk)
+		directConnect(host, hijack)
 		return
 	}
-	hr.trans(cli, domain, port, true)
+	hr.httpsTransfor(hijack, host, port, false)
 }
 
-func (hr *httpHandler) getHostAndPort(scheme string, hst string) (host string, port int) {
-	arr := strings.Split(hst, ":")
-	host = arr[0]
-	if len(arr) < 2 {
+func parserHost(host string)(string,int) {
+	  var arr = strings.Split(host, ":")
+		if len(arr)<2{
+			return arr[0],0
+		}
+		port,_ := strconv.Atoi(arr[1])
+		return arr[0],port
+}
+
+
+func (hr *httpWrap) httpConnect(rw http.ResponseWriter, req *http.Request) {
+	//remove header
+	removeHeaders(req)
+	host := req.URL.Host
+	host, port := parserHost(host)
+	if port == 0 {
 		port = 80
-		if scheme == "https" {
-			port = 443
-		}
-		return
 	}
-	port, _ = strconv.Atoi(arr[1])
-	return
-}
-
-func (hr *httpHandler) handleHTTP(rw http.ResponseWriter, req *http.Request) {
-	clearProxyHeader(req)
-	hst := req.URL.Host
-	domain, port := hr.getHostAndPort("http", hst)
-	if ip := net.ParseIP(domain); ip != nil {
-		if config.FromIP(domain) {
-			hr.handleSimpleHTTP(rw, req)
+	if ip := net.ParseIP(host); ip != nil {
+		if filterIP(host) {
+			hr.directHTTP(rw, req)
 			return
 		}
-		hr.httpTrans(rw, req, domain, port, false)
+		hr.doTransfor(rw, req, host, port, false)
 		return
 	}
-	if config.FromDomain(domain) && !config.Block(domain) {
-		hr.handleSimpleHTTP(rw, req)
+	if filterDomain(host) && !isblock(host) {
+		hr.directHTTP(rw, req)
 		return
 	}
-	hr.httpTrans(rw, req, domain, port, true)
+	hr.doTransfor(rw, req, host, port, true)
 }
 
-func (hr *httpHandler) httpTrans(rw http.ResponseWriter, req *http.Request, domain string, port int, isdomain bool) {
-	connector, err := client.NewClient(*hr.cfg)
+func (hr *httpWrap) doTransfor(rw http.ResponseWriter, req *http.Request, domain string, port int, isdomain bool) {
+	connector, err := conn.NewClient(*hr.conf)
 	if err != nil {
 		logger.Errorf("[HTTP_ERROR]:create server client error %s", err)
 		return
 	}
 
-	defer connector.Destory()
-	conn, _ := connector.Connect()
+	defer connector.Close()
+	c, _ := connector.Connect()
 
-	err = handleSocks5(domain, port, isdomain, conn)
+	data,err := makeSocks5Handshake(domain, port, isdomain)
 	if err != nil {
 		logger.Errorf("[HTTP_ERROR]:handle error message %s\n", err)
 		return
 	}
-	if err = req.Write(conn); err != nil {
+	c.Write(data)
+	if err = req.Write(c); err != nil {
 		logger.Errorf("[HTTP_ERROR]:write data error %s\n", err)
 		return
 	}
-	rsp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	rsp, err := http.ReadResponse(bufio.NewReader(c), nil)
 	if err != nil {
 		logger.Errorf("[HTTP_ERROR]:read response error %s\n", err)
 		return
 	}
 	defer rsp.Body.Close()
-	//clearHeaders(rw.Header())
-	//copyHeaders(rw.Header(), rsp.Header)
 	clearAndCopy(rw.Header(), rsp.Header)
 	rw.WriteHeader(rsp.StatusCode)
 	if _, err = io.Copy(rw, rsp.Body); err != nil {
@@ -157,8 +165,8 @@ func clearAndCopy(dest, src http.Header) {
 	copyHeaders(dest, src)
 }
 
-func (hr *httpHandler) handleSimpleHTTP(rw http.ResponseWriter, req *http.Request) {
-	resp, err := hr.tr.RoundTrip(req)
+func (hr *httpWrap) directHTTP(rw http.ResponseWriter, req *http.Request) {
+	resp, err := hr.transport.RoundTrip(req)
 	if err != nil {
 		http.Error(rw, err.Error(), 500)
 		return
@@ -173,97 +181,28 @@ func (hr *httpHandler) handleSimpleHTTP(rw http.ResponseWriter, req *http.Reques
 	}
 }
 
-func pipe(dest, src net.Conn) {
-	go io.Copy(dest, src)
-	io.Copy(src, dest)
-}
-
-func clearProxyHeader(req *http.Request) {
-	req.RequestURI = ""
-	req.Header.Del("Proxy-Connection")
-	req.Header.Del("Connection")
-	req.Header.Del("Keep-Alive")
-	req.Header.Del("Proxy-Authenticate")
-	req.Header.Del("Proxy-Authorization")
-	req.Header.Del("TE")
-	req.Header.Del("Trailers")
-	req.Header.Del("Transfer-Encoding")
-	req.Header.Del("Upgrade")
-}
-
-func clearHeaders(headers http.Header) {
-	for key := range headers {
-		headers.Del(key)
-	}
-}
-
-func copyHeaders(dst, src http.Header) {
-	for key, values := range src {
-		for _, value := range values {
-			dst.Add(key, value)
-		}
-	}
-}
-
-func (hr *httpHandler) trans(con net.Conn, host string, port int, isdomain bool) {
+func (hr *httpWrap) httpsTransfor(con net.Conn, host string, port int, isdomain bool) {
 	con.Write(httpOk)
-	connector, err := client.NewClient(*hr.cfg)
+	connector, err := conn.NewClient(*hr.conf)
 	if err != nil {
 		logger.Errorf("[HTTP_ERROR]:create server client error %s \n", err)
 		return
 	}
-	defer connector.Destory()
-	conn, _ := connector.Connect()
-	err = handleSocks5(host, port, isdomain, conn)
+	defer connector.Close()
+	c, _ := connector.Connect()
+	data,err := makeSocks5Handshake(host, port, isdomain)
 	if err != nil {
 		logger.Errorf("[HTTP_ERROR]:handle error message %s\n", err)
 		return
 	}
-	pipe(conn, con)
+	//write data
+	c.Write(data)
+	exchange(c, con)
 }
 
-func handleSocks5(host string, port int, isdomain bool, write io.Writer) error {
-	data := make([]byte, 260)
-	pos := 0
-	if isdomain {
-		data[pos] = domain
-		pos++
-		data[pos] = byte(len(host))
-		pos++
-		pos += copy(data[pos:], []byte(host))
-	} else {
-		data[pos] = ipv4
-		pos++
-		pos += copy(data[pos:], net.ParseIP(host).To4())
-	}
-	binary.BigEndian.PutUint16(data[pos:], uint16(port))
-	pos += 2
-	d := data[:pos]
-	if _, err := write.Write(d); err != nil {
-		logger.Errorf("[HTTP_ERROR]:write data error %s\n", err)
-		return err
-	}
-	return nil
-}
-
-func internal(con net.Conn, host string) {
-	//con.Write(httpOk)
-	connector, err := client.NewConnector(host, false)
-	if err != nil {
-		logger.Errorf("[HTTP_ERROR]:error when create client %s \n", err)
-		return
-	}
-	conn, err := connector.Connect()
-	defer func() {
-		con.Close()
-		connector.Destory()
-	}()
-	pipe(conn, con)
-}
-
-func auth(rw http.ResponseWriter, req *http.Request, password string) bool {
-	auth := req.Header.Get("Proxy-Authorization")
-	pair := strings.Replace(auth, "Basic ", "", 1)
+func authentication(rw http.ResponseWriter, req *http.Request, password string) bool {
+	authHeader := req.Header.Get("Proxy-Authorization")
+	pair := strings.Replace(authHeader, "Basic ", "", 1)
 	userPass, err := base64.StdEncoding.DecodeString(pair)
 	if err != nil {
 		logger.Errorf("[HTTP_ERROR]:handle err msg %s", err)
@@ -272,26 +211,25 @@ func auth(rw http.ResponseWriter, req *http.Request, password string) bool {
 	users := strings.Split(string(userPass), ":")
 	if len(users) < 2 {
 		logger.Errorf("[HTTP_ERROR]:Auth failed length %d", len(users))
-		writeAuthFailed(rw)
+		toFailed(rw)
 		return false
 	}
 	if users[0] == "" || users[1] == "" {
 		logger.Errorf("[HTTP_ERROR]:auth failed..%s", users)
-		writeAuthFailed(rw)
+		toFailed(rw)
 		return false
 	}
 	return users[1] == password
 
 }
 
-func writeAuthFailed(rw http.ResponseWriter) {
-	hj, _ := rw.(http.Hijacker)
-	client, _, err := hj.Hijack()
+func toFailed(rw http.ResponseWriter) {
+	hijack, _, err := rw.(http.Hijacker).Hijack()
 	if err != nil {
 		logger.Errorf("[HTTP_ERROR]:Fail to get Tcp connection of Client")
 		return
 	}
-	defer client.Close()
+	defer hijack.Close()
 
-	client.Write(httpAuthFailed)
+	hijack.Write(httpAuthFailed)
 }
