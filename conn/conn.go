@@ -79,6 +79,13 @@ func NewClient(conf config.Conf) (Connector, error) {
 	}
 	// use server id after this version
 	server, _ := roundRobin(0, conf)
+	if conf.Transport == "udp" {
+		uc, err := NewUDPClient(server, false)
+		if err != nil {
+			return nil, err
+		}
+		return uc, nil
+	}
 	if conf.SSL {
 		cli, err := createSSLClient(server)
 		if err != nil {
@@ -99,7 +106,7 @@ func roundRobin(serverid int, conf config.Conf) (string, int) {
 		serverid = rand.Intn(len(conf.Servers))
 	}
 	if serverid > 0 {
-		serverid = serverid -1
+		serverid = serverid - 1
 	}
 	server := conf.Servers[serverid]
 	return net.JoinHostPort(server.Host, strconv.Itoa(server.Port)), serverid

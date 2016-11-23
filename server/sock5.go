@@ -52,13 +52,13 @@ func (sr *socksReceiver) handleConnection(conn net.Conn) {
 		return
 	}
 	defer conn.Close()
-	connector,err := c.NewConnector(host, false)
+	connector, err := c.NewConnector(host, false)
 	if err != nil {
-		logger.Errorf("[SERVER]:create client failed %s \n",err)
+		logger.Errorf("[SERVER]:create client failed %s \n", err)
 		return
 	}
 	defer connector.Close()
-	con,_ := connector.Connect()
+	con, _ := connector.Connect()
 	if _, err := con.Write(data); err != nil {
 		logger.Errorf("[ERROR]:write data error %s\n", err)
 		return
@@ -121,6 +121,6 @@ func (sr *socksReceiver) Handle() {
 }
 
 //SocksServer ...
-func SocksServer(listener *net.Listener, sf *config.ServerConf) protocol.GreenTunnel{
+func SocksServer(listener *net.Listener, sf *config.ServerConf) protocol.GreenTunnel {
 	return &socksReceiver{listener, sf}
 }

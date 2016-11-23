@@ -7,7 +7,7 @@
 			"password":"123456",
 			"timeout":5,
 			"encrypt":"base64",
-			"protcol":"socks5",
+			"protocol":"socks5",	
 			"is_ssl":true,
 			"is_compress":true
 		}
@@ -17,6 +17,6 @@
 	"protcol":"http",
 	"auth":false,
 	"proxy_username":"",
-	"proxy_password":""
-
+	"proxy_password":"",
+	"transport":"udp"
 }

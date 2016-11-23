@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+
 	"github.com/op/go-logging"
 )
 
@@ -15,9 +16,10 @@ type Conf struct {
 	SSL       bool     `json:"ssl"`
 	LocalPort int      `json:"local_port"`
 	Servers   []common `json:"servers"`
-	Protcol   string   `json:"protocol"`
+	Protocol  string   `json:"protocol"`
 	Password  string   `json:"proxy_password"`
 	Timeout   int      `json:"timeout"`
+	Transport string   `json:"transport"`
 }
 
 type common struct {
@@ -35,7 +37,7 @@ type ServerConf struct {
 }
 
 //Create ...
-func Create(filename string, cfg interface{}){
+func Create(filename string, cfg interface{}) {
 	f, err := os.Open(filename)
 	if err != nil {
 		logger.Errorf("[ERROR]:open file error...%s.file name %s\n", err, filename)
