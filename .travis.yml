@@ -3,3 +3,13 @@ go:
   - 1.7.4
   - 1.6
   - master
+env:
+  global:
+    - GOPATH=/home/travis/gopath
+
+ script:
+   - cd $GOPATH
+   - mkdir -p $GOPATH/src/github.com/elians/fproxy
+   - cd $GOPATH/src/github.com/elians/
+   - git clone https://github.com/wjybluse/fproxy $GOPATH/src/github.com/elians/fproxy
+   - cd $GOPATH/src/github.com/elians/fproxy/cmd && go build -v .
