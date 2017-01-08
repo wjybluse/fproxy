@@ -41,7 +41,7 @@ func (sr *udpRecevier) handleConnection(conn net.Conn) {
 
 func (sr *udpRecevier) Handle() {
 	for {
-		go sr.handleConnection(sr.conn)
+		sr.handleConnection(sr.conn)
 	}
 }
 

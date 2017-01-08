@@ -4,13 +4,13 @@ import (
     "io"
     "os"
     "strings"
-    "github.com/elians/fproxy/conn"
-    "github.com/op/go-logging"
-    gip "github.com/alecthomas/geoip"
     "encoding/binary"
     "bufio"
     "net/http"
     "errors"
+    "github.com/elians/fproxy/conn"
+    "github.com/op/go-logging"
+    gip "github.com/alecthomas/geoip"
 )
 
 var (
