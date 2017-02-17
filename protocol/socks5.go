@@ -27,15 +27,15 @@ func (sw *socks5Wrap) handshake(conn net.Conn) error {
 	buf := make([]byte, 258)
 	var n int
 	var err error
-	if n, err = io.ReadAtLeast(conn, buf, nmethod+1); err != nil {
+	if n, err = io.ReadAtLeast(conn, buf, methods+1); err != nil {
 		logger.Errorf("[SOCKS_ERROR]:read data error %s\n", err)
 		return err
 	}
-	if buf[version] != socksV5 {
-		logger.Errorf("[SOCKS_ERROR]:error version socks %v\n", buf[version])
+	if buf[ver] != v5 {
+		logger.Errorf("[SOCKS_ERROR]:error version socks %v\n", buf[ver])
 		return errSocks
 	}
-	nmethod := int(buf[nmethod])
+	nmethod := int(buf[methods])
 	msgLen := nmethod + 2
 	if n == msgLen {
 		//TODO
@@ -47,7 +47,7 @@ func (sw *socks5Wrap) handshake(conn net.Conn) error {
 			return err
 		}
 	}
-	_, err = conn.Write([]byte{socksV5, 0})
+	_, err = conn.Write([]byte{v5, 0})
 	return err
 }
 
@@ -60,11 +60,11 @@ func request(c net.Conn) (string, bool, []byte, error) {
 		logger.Errorf("[SOCKS_ERROR]:read data from client error %s\n", err)
 		return "", false, nil, err
 	}
-	if buf[version] != socksV5 {
-		logger.Errorf("[SOCKS_ERROR]:invalid version %b \n", buf[version])
+	if buf[ver] != v5 {
+		logger.Errorf("[SOCKS_ERROR]:invalid version %b \n", buf[ver])
 		return "", false, nil, errSocks
 	}
-	if buf[1] != socksCmdConnect {
+	if buf[1] != connect {
 		logger.Errorf("[SOCKS_ERROR]:error socks cmd value is %v\n", buf[1])
 		return "", false, nil, errCmd
 	}

@@ -23,11 +23,11 @@ var (
 
 const (
 	//for handshake
-	version = 0
-	nmethod = 1
+	ver = 0
+	methods = 1
 
-	socksV5         = 5
-	socksCmdConnect = 1
+	v5         = 5
+	connect = 1
 
 	domainLen = 4
 	ipv4      = 1

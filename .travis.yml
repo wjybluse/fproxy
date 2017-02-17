@@ -12,4 +12,5 @@ env:
    - mkdir -p $GOPATH/src/github.com/elians/fproxy
    - cd $GOPATH/src/github.com/elians/
    - git clone https://github.com/wjybluse/fproxy $GOPATH/src/github.com/elians/fproxy
-   - cd $GOPATH/src/github.com/elians/fproxy/cmd && go build -v .
+   - go get github.com/tools/godep && cd $GOPATH/src/github.com/elians/fproxy/cmd/server && godep go build
+   -  cd $GOPATH/src/github.com/elians/fproxy/cmd/client && godep go build
