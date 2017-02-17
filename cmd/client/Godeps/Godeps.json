@@ -1,0 +1,36 @@
+{
+	"ImportPath": "github.com/elians/fproxy/cmd/client",
+	"GoVersion": "go1.8",
+	"GodepVersion": "v62",
+	"Deps": [
+		{
+			"ImportPath": "github.com/alecthomas/geoip",
+			"Rev": "ef86b5d4cf8bd7291afeb016418cdbf83470af00"
+		},
+		{
+			"ImportPath": "github.com/alecthomas/geoip/db",
+			"Rev": "ef86b5d4cf8bd7291afeb016418cdbf83470af00"
+		},
+		{
+			"ImportPath": "github.com/alecthomas/gobundle",
+			"Rev": "e2f55dbde06a5f77289d5de033040a83bc272db3"
+		},
+		{
+			"ImportPath": "github.com/elians/fproxy/config",
+			"Rev": "9cf67088b0148b395ab505247c220d19b46779d3"
+		},
+		{
+			"ImportPath": "github.com/elians/fproxy/conn",
+			"Rev": "9cf67088b0148b395ab505247c220d19b46779d3"
+		},
+		{
+			"ImportPath": "github.com/elians/fproxy/protocol",
+			"Rev": "9cf67088b0148b395ab505247c220d19b46779d3"
+		},
+		{
+			"ImportPath": "github.com/op/go-logging",
+			"Comment": "v1-7-g970db52",
+			"Rev": "970db520ece77730c7e4724c61121037378659d9"
+		}
+	]
+}
